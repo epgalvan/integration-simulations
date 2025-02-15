@@ -1,0 +1,264 @@
+# Integration Proof
+
+The present document contains information providing that, at least for the example of van Baar, Chang, and Sanfey's Hidden Multiplier Trust Game (2019), it is better to create a single integrated model that explains why conditions are different rather than to fit models per condition. This proof will follow as a logical argument, illustrated with simulated data.
+
+## Simulating Data
+
+The base simulation will contain no error, and will be based on the model outlined in Galvan and Sanfey's paper in *Social Cognition* (2025) as this notebook is intended to support the claims outlined in this paper.
+
+### Base Functions
+
+```{r}
+payout_maximization = function(investment, multiplier, returned){
+  maxPayout = investment * multiplier
+  return((maxPayout - returned)/maxPayout)
+}
+inequity = function(investment, multiplier, returned, endowment){
+  maxInequality = investment * multiplier
+  Equality = investment * multiplier - ((endowment - investment + (investment * multiplier)) * 0.5)
+  
+  choices = seq(0, investment * multiplier)
+  Inequality = abs(Equality - choices)
+  minInequality = choices[which(Inequality == min(Inequality))]
+  
+  maxViolation = max(abs(maxInequality - minInequality))
+  
+  violation = (min(minInequality - returned))/maxViolation
+  return(1 - (violation)**2)
+}
+guilt = function(investment, believed_multiplier, returned, multiplier, endowment){
+  expectation = 0.5 * (believed_multiplier * investment + endowment - investment)
+  expectation = expectation - (endowment - investment)
+  expectation = max(expectation, 0)
+  maxViolation = abs(expectation - 0)
+  violation = (expectation - returned)/maxViolation
+  if (maxViolation > 0) {violation = (expectation - returned)/maxViolation} else {
+    violation = 0
+  }
+  return(1 - (violation)**2)
+}
+```
+
+### Utility Equation
+
+```{r}
+utility = function(theta, phi, guilt, inequity, payout){
+  return(theta*payout + (1-theta)* (guilt * (1 - phi) + inequity * phi))
+}
+```
+
+### Generate Predictions
+
+```{r}
+generatePredictions = function(params, df){
+  prediction = vector('numeric', nrow(df))
+  for (k in 1:nrow(df)){
+    I = df$Investment[k]
+    M = df$Multiplier[k]
+    B = df$Believed_Multiplier[k]
+    E = df$Endowment[k]
+    Choices = seq(0, (I*M))
+    Utility = vector('numeric', length(Choices))
+    for (n in 1:length(Choices)){
+      Utility[n] = utility(theta = params[1], 
+                           phi = params[2], 
+                           guilt = guilt(I, B, Choices[n], M, E), 
+                           inequity = inequity(I, M, Choices[n], E), 
+                           payout = payout_maximization(I, M, Choices[n]))
+    }
+    correct_choice = which(Utility == max(Utility))
+    if (length(correct_choice) > 1){
+      correct_choice = correct_choice[sample(1:length(correct_choice), 1)]
+    }
+    prediction[k] = Choices[correct_choice]
+  }
+  return(prediction)
+}
+```
+
+### Set-Up
+
+Let's get the parameters we want to simulate data for
+
+```{r}
+freeParameters = data.frame(theta = rep(seq(0, 1, 0.01), each = 101),
+                            phi = rep(seq(0, 1, 0.01), times = 101))
+
+head(freeParameters)
+```
+
+And the trialset we want to use
+
+```{r}
+trialSet = data.frame(Investment = rep(seq(1, 10), times = 3),
+                      Multiplier = rep(c(2, 4, 6), each = 10),
+                      Endowment = rep(10, 30),
+                      Believed_Multiplier = rep(4, 30))
+trialSet
+```
+
+### Output the Predictions
+
+```{r}
+predictions = data.frame()
+for (i in 1:nrow(freeParameters)){
+  pars = as.numeric(freeParameters[i, ])
+  predictions[i, 1:nrow(trialSet)] = generatePredictions(pars, trialSet)
+}
+head(predictions)
+```
+
+### Objective Function
+
+First let's set up the objective function
+
+```{r}
+obj_function = function(params, df, method = "OLS") {
+  predicted_utility = vector('numeric', length(df[,1]))
+  observed_utility = vector('numeric', length(df[,1]))
+  Predictions = generatePredictions(params, df)
+  for (k in 1:nrow(df)){
+    I = df$Investment[k]
+    M = df$Multiplier[k]
+    B = df$Believed_Multiplier[k]
+    E = df$Endowment[k]
+    R = df$Returned[k]
+    P = Predictions[k]
+    
+    predicted_utility[k] = utility(theta = params[1], phi = params[2],
+                                   guilt = guilt(I, B, P, M, E), 
+                                   inequity = inequity(I, M, P, E), 
+                                   payout = payout_maximization(I, M, P))
+    observed_utility[k] =  utility(theta = params[1], phi = params[2],
+                                   guilt = guilt(I, B, R, M, E), 
+                                   inequity = inequity(I, M, R, E), 
+                                   payout = payout_maximization(I, M, R))
+  }
+  
+  return(sum((predicted_utility - observed_utility)**2))
+}
+```
+
+### Per Condition Model
+
+We'll call the per condition model the alternative model
+
+```{r}
+utilityAlt = function(theta, inequity, payout){
+  return(theta*payout + (1-theta)*inequity)
+}
+generatePredictionsAlt = function(params, df){
+  prediction = vector('numeric', nrow(df))
+  for (k in 1:nrow(df)){
+    I = df$Investment[k]
+    M = df$Multiplier[k]
+    E = df$Endowment[k]
+    Choices = seq(0, (I*M))
+    Utility = vector('numeric', length(Choices))
+    for (n in 1:length(Choices)){
+      if (M == 2){ # point of segregation
+        par = params[1]
+      } else if (M == 4){
+        par = params[2]
+      } else if (M == 6){
+        par = params[3]}
+      Utility[n] = utilityAlt(theta = par,  
+                              inequity = inequity(I, M, Choices[n], E), 
+                              payout = payout_maximization(I, M, Choices[n]))
+    }
+    correct_choice = which(Utility == max(Utility))
+    if (length(correct_choice) > 1){
+      correct_choice = correct_choice[sample(1:length(correct_choice), 1)]
+    }
+    prediction[k] = Choices[correct_choice]
+  }
+  return(prediction)
+}
+obj_functionAlt = function(params, df, method = "OLS") {
+  predicted_utility = vector('numeric', length(df[,1]))
+  observed_utility = vector('numeric', length(df[,1]))
+  Predictions = generatePredictions(params, df)
+  for (k in 1:nrow(df)){
+    I = df$Investment[k]
+    M = df$Multiplier[k]
+    E = df$Endowment[k]
+    R = df$Returned[k]
+    P = Predictions[k]
+    
+    predicted_utility[k] = utilityAlt(theta = params[1], 
+                                      inequity = inequity(I, M, P, E), 
+                                      payout = payout_maximization(I, M, P))
+    observed_utility[k] =  utilityAlt(theta = params[1], 
+                                      inequity = inequity(I, M, R, E), 
+                                      payout = payout_maximization(I, M, R))
+  }
+  
+  return(sum((predicted_utility - observed_utility)**2))
+}
+```
+
+### Initialize for Parameter Recovery
+
+```{r}
+library(pracma)
+
+initial_params = c(0.5, 0.5)
+lower_bounds = c(0, 0)
+upper_bounds = c(1,1)
+
+initial_paramsAlt = c(0, 0, 0)
+lower_boundsAlt = c(-1, -1, -1)
+upper_boundsAlt = c(1, 1, 1)
+```
+
+## Proof Goals
+
+At this point we have deduced the choices that the model predicts per each coordinate in parameter space. The goal in what follows is to demonstrate that a less-parsimonious, incorrect model which is fit to conditions will outperform the true data generation process.
+
+Thus, we will compare the 2 parameter model which integrates across conditions to the 3 parameter model which segregates conditions in terms of their ability to explain the data generated by the 2 parameter model (predictions). However, since the predictions do not contain noise, we will noise up the data. The default standard deviation will be 1.
+
+```{r}
+noise = function(predictions, sd = 1){
+  predictions = rnorm(predictions, mean = 0, sd = 1)
+  predictions = round(predictions)
+  predictions[which(predictions < 0)] = 0
+  return(predictions)
+}
+```
+
+Also, a robust amount of research on these kinds of task indicates that preferences are not evenly distributed across the parameter space.
+
+```{r}
+distribution_theta = rnorm(n = 1000000, mean = 0.3, sd = 0.3)
+distribution_theta = distribution_theta[-which(distribution_theta < 0 | distribution_theta > 1)]
+distribution_theta = round(distribution_theta, 2)
+library(ggplot2)
+ggplot() + geom_density(aes(x = distribution_theta), 
+                       method = 'loess')
+```
+
+Around 10 percent of people are selfish, corresponding to a theta \> 0.7 in this equation
+
+```{r}
+sum(distribution_theta > 0.7)/length(distribution_theta)
+```
+
+We'll sample phi values randomly. We'll also use a default number of trials of 60.
+
+```{r}
+nTrials = 60
+```
+
+Sample the parameter space for the maximum number of observations: 1000
+
+```{r}
+n1000 = data.frame(theta = sample(distribution_theta, 1000),
+                   phi = sample(freeParameters$phi, 1000))
+ggplot(data = n1000) + geom_point(aes(x = theta, y = phi))
+```
+
+And save this information so that it can be used in the lower child scripts
+
+```{r}
+save.image(file = "C:/Users/DELL/Documents/socog/index.RData")
+```
