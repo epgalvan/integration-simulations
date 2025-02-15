@@ -1,5 +1,47 @@
 <!DOCTYPE html>
-
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Navigation Pane</title>
+    <style>
+        body {
+            margin-right: 160px; /* Ensure content doesn't overlap with nav */
+        }
+        .nav-pane {
+            position: fixed;
+            right: 0;
+            top: 20%;
+            transform: translateY(-50%);
+            width: 140px;
+            background: rgb(26, 158, 165);
+            padding: 10px;
+            border-radius: 10px;
+            text-align: right;
+        }
+        .nav-pane a {
+            display: block;
+            color: rgba(255, 255, 255, 0.693);
+            text-decoration: none;
+            padding: 8px 0;
+            font-size: 14px;
+        }
+        .nav-pane a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="nav-pane">
+        <a href="index.html"><h4>Home</h4> </a>
+        <a href="sampleSize.html">Sample Size</a>
+        <a href="modelFitIndex.html">Model Fit Index</a>
+        <a href="standardDeviation.html">Non-systematic Error</a>
+        <a href="trialCount.html">Trial Count</a>
+        <a href="heteroscedstacity.html">Heteroscedasticity</a>
+    </div>
+</body>
+</html>
 <html>
 
 <head>
