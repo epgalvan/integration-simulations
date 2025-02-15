@@ -43,8 +43,8 @@ for (i in 1:nrow(df)){
 Compute BIC
 
 ```{r}
-df$BIC = 2 * df$NLL + 2 * log(nrow(data))
-df$BIC_alt = 2 * df$NLL_alt + 3 * log(nrow(data))
+df$BIC = 2 * df$NLL + 2 * log(nTrials)
+df$BIC_alt = 2 * df$NLL_alt + 3 * log(nTrials)
 ```
 
 Now paired t-test over all values
@@ -164,7 +164,7 @@ plottingInfoAll$Count[which(plottingInfoAll$N == sampleSize)] =
 Now visualize all results
 
 ```{r}
-plottingInfoAll$N = as.factor(plottingInfoAll$N)
+plottingInfoAll$N = factor(plottingInfoAll$N, levels = c(500, 200, 100, 50, 20))
 plottingInfoAll$Outcome = factor(plottingInfoAll$Outcome,
                                  levels = c("Correct & p < 0.05",
                                             "Correct & N.S.", 
@@ -182,8 +182,8 @@ plottingInfoAll$Position[those] = 1 - plottingInfoAll$Proportion[these] -
 
 these = which(plottingInfoAll$Outcome == "Incorrect & p < 0.05")
 those = which(plottingInfoAll$Outcome == "Incorrect & N.S.")
-plottingInfoAll$Position[those] = plottingInfoAll$Proportion[these] +
-  plottingInfoAll$Proportion[those]/2
+plottingInfoAll$Position[those] = max(plottingInfoAll$Proportion[these] +
+  plottingInfoAll$Proportion[those]/2, 0.2)
 ggplot(data = plottingInfoAll, aes(x = Proportion, y = N, group = Outcome,
                                    fill = Outcome)) + 
   geom_col() + theme_minimal() + 

@@ -13,8 +13,8 @@ library(ggplot2)
 Compute BIC
 
 ```{r}
-df$BIC = 2 * df$NLL + 2 * log(nrow(data))
-df$BIC_alt = 2 * df$NLL_alt + 3 * log(nrow(data))
+df$BIC = 2 * df$NLL + 2 * log(nTrials)
+df$BIC_alt = 2 * df$NLL_alt + 3 * log(nTrials)
 ```
 
 ## AIC
@@ -29,7 +29,6 @@ df$AIC_alt = 2 * df$NLL_alt + 3 * 2
 Now determine
 
 ```{r}
-sampleSize = 100
 plottingInfoAll = data.frame(Outcome = rep(c("Incorrect & N.S.", 
                                              "Correct & N.S.", 
                                              "Incorrect & p < 0.05",
@@ -38,6 +37,9 @@ plottingInfoAll = data.frame(Outcome = rep(c("Incorrect & N.S.",
                              MPI = rep(c("AIC", "BIC"), each = 4))
 
 index = "AIC"
+standardDeviation = 1
+sampleSize = 100
+nTrials = 60
 test = vector('logical', 100000)
 better = vector('logical', 100000)
 for (i in 1:length(test)){
@@ -77,8 +79,8 @@ plottingInfoAll$Position[those] = 1 - plottingInfoAll$Proportion[these] -
 
 these = which(plottingInfoAll$Outcome == "Incorrect & p < 0.05")
 those = which(plottingInfoAll$Outcome == "Incorrect & N.S.")
-plottingInfoAll$Position[those] = plottingInfoAll$Proportion[these] +
-  plottingInfoAll$Proportion[those]/2
+plottingInfoAll$Position[those] = max(plottingInfoAll$Proportion[these] +
+  plottingInfoAll$Proportion[those]/2, 0.2)
 ggplot(data = plottingInfoAll, aes(x = Proportion, y = MPI, group = Outcome,
                                    fill = Outcome)) + 
   geom_col() + theme_minimal() + 

@@ -15,6 +15,7 @@ plottingInfoAll = data.frame(Outcome = rep(c("Incorrect & N.S.",
                              trialCount = rep(seq(30, 180, 30), each = 4))
 
 nTrials = 60
+sampleSize = 100
 test = vector('logical', 100000)
 better = vector('logical', 100000)
 for (i in 1:length(test)){
@@ -40,7 +41,7 @@ for (i in 1:nrow(df)){
   preds = as.numeric(predictions[row, ])
   preds = rep(preds, times = nTrials/length(preds))
   preds = noise(preds)
-  data = rbind(trialSet, trialSet)
+  data = trialSet
   data$Returned = preds
   
   result = fmincon(obj_function,x0 = initial_params,
@@ -85,7 +86,7 @@ for (i in 1:nrow(df)){
   preds = as.numeric(predictions[row, ])
   preds = rep(preds, times = nTrials/length(preds))
   preds = noise(preds)
-  data = rbind(trialSet, trialSet)
+  data = rbind(trialSet, trialSet, trialSet)
   data$Returned = preds
   
   result = fmincon(obj_function,x0 = initial_params,
@@ -130,7 +131,7 @@ for (i in 1:nrow(df)){
   preds = as.numeric(predictions[row, ])
   preds = rep(preds, times = nTrials/length(preds))
   preds = noise(preds)
-  data = rbind(trialSet, trialSet)
+  data = rbind(trialSet, trialSet, trialSet, trialSet)
   data$Returned = preds
   
   result = fmincon(obj_function,x0 = initial_params,
@@ -175,7 +176,7 @@ for (i in 1:nrow(df)){
   preds = as.numeric(predictions[row, ])
   preds = rep(preds, times = nTrials/length(preds))
   preds = noise(preds)
-  data = rbind(trialSet, trialSet)
+  data = rbind(trialSet, trialSet, trialSet, trialSet, trialSet)
   data$Returned = preds
   
   result = fmincon(obj_function,x0 = initial_params,
@@ -220,7 +221,7 @@ for (i in 1:nrow(df)){
   preds = as.numeric(predictions[row, ])
   preds = rep(preds, times = nTrials/length(preds))
   preds = noise(preds)
-  data = rbind(trialSet, trialSet)
+  data = rbind(trialSet, trialSet, trialSet, trialSet, trialSet, trialSet)
   data$Returned = preds
   
   result = fmincon(obj_function,x0 = initial_params,
@@ -268,9 +269,9 @@ plottingInfoAll$Position[those] = 1 - plottingInfoAll$Proportion[these] -
 
 these = which(plottingInfoAll$Outcome == "Incorrect & p < 0.05")
 those = which(plottingInfoAll$Outcome == "Incorrect & N.S.")
-plottingInfoAll$Position[those] = plottingInfoAll$Proportion[these] +
-  plottingInfoAll$Proportion[those]/2
-ggplot(data = plottingInfoAll, aes(x = Proportion, y = MPI, group = Outcome,
+plottingInfoAll$Position[those] = max(plottingInfoAll$Proportion[these] +
+  plottingInfoAll$Proportion[those]/2, 0.2)
+ggplot(data = plottingInfoAll, aes(x = Proportion, y = trialCount, group = Outcome,
                                    fill = Outcome)) + 
   geom_col() + theme_minimal() + 
   scale_fill_manual(values = c("green", "forestgreen", "firebrick4", "red")) +
