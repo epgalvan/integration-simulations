@@ -12,7 +12,7 @@ warp = function(Predictions, X, Xmax, WarpFactor = 0, BiasFactor = 0,
   for (i in 1:length(Predictions)){
     standardDeviation = SD + (((X[i] - (Xmax/2))/Xmax) * WarpFactor)
     Mean[i] = M + (((Xmax - X[i])/Xmax) * BiasFactor)
-    Predictions[i] = rnorm(Predictions[i], mean = Mean, sd = standardDeviation)
+    Predictions[i] = Predictions[i] + rnorm(1, mean = Mean, sd = standardDeviation)
   }
   Predictions = round(Predictions)
   Predictions[which(Predictions < 0)] = 0
@@ -237,7 +237,7 @@ plottingInfoAll$Count[which(plottingInfoAll$factor == Factor)] =
 
 
 
-plottingInfoAll$factor = as.factor(plottingInfoAll$factor)
+plottingInfoAll$factor = factor(plottingInfoAll$factor, levels = c(1.5, 1, 0.5, 0.25, 0))
 plottingInfoAll$Outcome = factor(plottingInfoAll$Outcome,
                                  levels = c("Correct & p < 0.05",
                                             "Correct & N.S.", 

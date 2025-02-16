@@ -3,9 +3,21 @@
 Load file
 
 ```{r}
-load(file = "C:/Users/DELL/Documents/socog/heteroscedasticity.RData")
+load(file = "C:/Users/DELL/Documents/socog/sampleSize.RData")
 library(pracma)
 library(ggplot2)
+warp = function(Predictions, X, Xmax, WarpFactor = 0, BiasFactor = 0, 
+                SD = 1, M = 0){
+  Mean = vector('numeric', length(Predictions))
+  for (i in 1:length(Predictions)){
+    standardDeviation = SD + (((X[i] - (Xmax/2))/Xmax) * WarpFactor)
+    Mean[i] = M + (((Xmax - X[i])/Xmax) * BiasFactor)
+    Predictions[i] = Predictions[i] + rnorm(1, mean = Mean, sd = standardDeviation)
+  }
+  Predictions = round(Predictions)
+  Predictions[which(Predictions < 0)] = 0
+  return(Predictions)
+}
 ```
 
 ## Factor = 0
@@ -54,7 +66,7 @@ for (i in 1:length(test)){
   test[i] = t.test(subsample$BIC, subsample$BIC_alt, paired = T)$p.value < 0.05
 }
 contingency = table(better, test)
-plottingInfoAll$Count[which(plottingInfoAll$SD == standardDeviation)] = 
+plottingInfoAll$Count[which(plottingInfoAll$factor == Factor)] = 
   as.vector(contingency)
 ```
 
@@ -104,7 +116,7 @@ for (i in 1:length(test)){
   test[i] = t.test(subsample$BIC, subsample$BIC_alt, paired = T)$p.value < 0.05
 }
 contingency = table(better, test)
-plottingInfoAll$Count[which(plottingInfoAll$SD == standardDeviation)] = 
+plottingInfoAll$Count[which(plottingInfoAll$factor == Factor)] = 
   as.vector(contingency)
 ```
 
@@ -154,7 +166,7 @@ for (i in 1:length(test)){
   test[i] = t.test(subsample$BIC, subsample$BIC_alt, paired = T)$p.value < 0.05
 }
 contingency = table(better, test)
-plottingInfoAll$Count[which(plottingInfoAll$SD == standardDeviation)] = 
+plottingInfoAll$Count[which(plottingInfoAll$factor == Factor)] = 
   as.vector(contingency)
 ```
 
@@ -204,7 +216,7 @@ for (i in 1:length(test)){
   test[i] = t.test(subsample$BIC, subsample$BIC_alt, paired = T)$p.value < 0.05
 }
 contingency = table(better, test)
-plottingInfoAll$Count[which(plottingInfoAll$SD == standardDeviation)] = 
+plottingInfoAll$Count[which(plottingInfoAll$factor == Factor)] = 
   as.vector(contingency)
 ```
 
@@ -254,11 +266,11 @@ for (i in 1:length(test)){
   test[i] = t.test(subsample$BIC, subsample$BIC_alt, paired = T)$p.value < 0.05
 }
 contingency = table(better, test)
-plottingInfoAll$Count[which(plottingInfoAll$SD == standardDeviation)] = 
+plottingInfoAll$Count[which(plottingInfoAll$factor == Factor)] = 
   as.vector(contingency)
 
 
-plottingInfoAll$SD = as.factor(plottingInfoAll$SD)
+plottingInfoAll$factor = as.factor(plottingInfoAll$Factor)
 plottingInfoAll$Outcome = factor(plottingInfoAll$Outcome,
                                  levels = c("Correct & p < 0.05",
                                             "Correct & N.S.", 
@@ -279,7 +291,7 @@ those = which(plottingInfoAll$Outcome == "Incorrect & N.S.")
 plottingInfoAll$Position[those] = max(plottingInfoAll$Proportion[these] +
   plottingInfoAll$Proportion[those]/2, 0.2)
 
-ggplot(data = plottingInfoAll, aes(x = Proportion, y = SD, group = Outcome,
+ggplot(data = plottingInfoAll, aes(x = Proportion, y = factor, group = Outcome,
                                    fill = Outcome)) + 
   geom_col() + theme_minimal() + 
   scale_fill_manual(values = c("green", "forestgreen", "firebrick4", "red")) +
