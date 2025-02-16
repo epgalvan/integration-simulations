@@ -251,6 +251,7 @@ for (i in 1:length(test)){
 contingency = table(better, test)
 plottingInfoAll$Count[which(plottingInfoAll$trialCount == nTrials)] = 
   as.vector(contingency)
+plottingInfoAll$trialCount = factor(plottingInfoAll$trialCount, levels = c("180", "150", "120", "90", "60", "30"))
 
 plottingInfoAll$Outcome = factor(plottingInfoAll$Outcome,
                                  levels = c("Correct & p < 0.05",
