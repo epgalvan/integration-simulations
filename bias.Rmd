@@ -6,271 +6,72 @@ Load file
 load(file = "C:/Users/DELL/Documents/socog/sampleSize.RData")
 library(pracma)
 library(ggplot2)
-warp = function(Predictions, X, Xmax, WarpFactor = 0, BiasFactor = 0, 
-                SD = 1, M = 0){
-  Mean = vector('numeric', length(Predictions))
-  for (i in 1:length(Predictions)){
-    standardDeviation = SD + (((X[i] - (Xmax/2))/Xmax) * WarpFactor)
-    Mean[i] = M + (((Xmax - X[i])/Xmax) * BiasFactor)
-    Predictions[i] = Predictions[i] + rnorm(1, mean = Mean, sd = standardDeviation)
+```
+
+## Assess Violations
+
+```{r}
+plottingInfoAll = data.frame(Outcome = rep(c("Incorrect & N.S.", 
+                                             "Correct & N.S.", 
+                                             "Incorrect & p < 0.05",
+                                             "Correct & p < 0.05"), times = 5),
+                             Count = 0,
+                             factor = rep(c(0, 0.25, 0.5, 1, 1.5), each = 4))
+
+sampleSize = 100
+Factors = c(0, 0.25, 0.5, 1, 1.5)
+for (Factor in Factors){
+  df = n1000
+  df = as.data.frame(df)
+  df$NLL = 0
+  df$NLL_alt = 0
+  Xmax = max((data$Investment * data$Believed_Multiplier)/2)
+  for (i in 1:nrow(df)){
+    row = which(round(freeParameters$theta, 2) == round(df$theta[i], 2) & 
+                  round(freeParameters$phi, 2) == round(df$phi[i], 2))
+    preds = as.numeric(predictions[row, ])
+    preds = rep(preds, times = nTrials/length(preds))
+    data = rbind(trialSet, trialSet)
+    data$Returned = preds
+    data$Returned = data$Returned + 
+      (((Xmax - (data$Investment * data$Believed_Multiplier)/2)/Xmax) * Factor)
+    data$Returned = noise(data$Returned, standardDeviation)
+    
+    result = fmincon(obj_function,x0 = initial_params,
+                     lb = lower_bounds, ub = upper_bounds,
+                     df = data)
+    resultAlt = fmincon(obj_functionAlt, x0 = initial_paramsAlt,
+                        lb = lower_boundsAlt, ub = upper_boundsAlt,
+                        df = data)
+    data$Preds = generatePredictions(result$par, data)
+    data$PredsAlt = generatePredictionsAlt(resultAlt$par, data)
+    
+    df$NLL[i] = -sum(dnorm(data$Returned, mean = data$Preds, 
+                           sd = sd(data$Returned - data$Preds), log = TRUE))
+    df$NLL_alt[i] = -sum(dnorm(data$Returned, mean = data$PredsAlt, 
+                               sd = sd(data$Returned - data$PredsAlt), log = TRUE))
   }
-  Predictions = round(Predictions)
-  Predictions[which(Predictions < 0)] = 0
-  return(Predictions)
+  
+  df$BIC = 2 * df$NLL + 2 * log(nrow(data))
+  df$BIC_alt = 2 * df$NLL_alt + 3 * log(nrow(data))
+  test = vector('logical', 100000)
+  better = vector('logical', 100000)
+  for (i in 1:length(test)){
+    subsample = df[sample(1:nrow(df), sampleSize, replace = T), ]
+    better[i] = sum(subsample$BIC) < sum(subsample$BIC_alt)
+    test[i] = t.test(subsample$BIC, subsample$BIC_alt, paired = T)$p.value < 0.05
+  }
+  contingency = table(better, test)
+  plottingInfoAll$Count[which(plottingInfoAll$factor == Factor)] = 
+    as.vector(contingency)
 }
 ```
 
-## Factor = 0
+## Plot
 
 ```{r}
-Factor = 0
-df = n1000
-df = as.data.frame(df)
-df$NLL = 0
-df$NLL_alt = 0
-for (i in 1:nrow(df)){
-  row = which(round(freeParameters$theta, 2) == round(df$theta[i], 2) & 
-                round(freeParameters$phi, 2) == round(df$phi[i], 2))
-  preds = as.numeric(predictions[row, ])
-  preds = rep(preds, times = nTrials/length(preds))
-  preds = noise(preds, standardDeviation)
-  data = rbind(trialSet, trialSet)
-  data$Returned = preds
-  
-  result = fmincon(obj_function,x0 = initial_params,
-                   lb = lower_bounds, ub = upper_bounds,
-                   df = data)
-  resultAlt = fmincon(obj_functionAlt, x0 = initial_paramsAlt,
-                      lb = lower_boundsAlt, ub = upper_boundsAlt,
-                      df = data)
-  data$Preds = generatePredictions(result$par, data)
-  data$PredsAlt = generatePredictionsAlt(resultAlt$par, data)
-  data$Preds = warp(data$Preds, data$Investment * 2, 
-                    max(data$Investment * 2), 0, Factor)
-  data$PredsAlt = warp(data$PredsAlt, data$Investment * 2, 
-                       max(data$Investment * 2), 0, Factor)
-  
-  df$NLL[i] = -sum(dnorm(data$Returned, mean = data$Preds, 
-                         sd = sd(data$Returned - data$Preds), log = TRUE))
-  df$NLL_alt[i] = -sum(dnorm(data$Returned, mean = data$PredsAlt, 
-                             sd = sd(data$Returned - data$PredsAlt), log = TRUE))
-}
-
-df$BIC = 2 * df$NLL + 2 * log(nrow(data))
-df$BIC_alt = 2 * df$NLL_alt + 3 * log(nrow(data))
-test = vector('logical', 100000)
-better = vector('logical', 100000)
-for (i in 1:length(test)){
-  subsample = df[sample(1:nrow(df), sampleSize, replace = T), ]
-  better[i] = sum(subsample$BIC) < sum(subsample$BIC_alt)
-  test[i] = t.test(subsample$BIC, subsample$BIC_alt, paired = T)$p.value < 0.05
-}
-contingency = table(better, test)
-plottingInfoAll$Count[which(plottingInfoAll$factor == Factor)] = 
-  as.vector(contingency)
-```
-
-## Factor **= 0.25**
-
-```{r}
-Factor = 0.25
-df = n1000
-df = as.data.frame(df)
-df$NLL = 0
-df$NLL_alt = 0
-for (i in 1:nrow(df)){
-  row = which(round(freeParameters$theta, 2) == round(df$theta[i], 2) & 
-                round(freeParameters$phi, 2) == round(df$phi[i], 2))
-  preds = as.numeric(predictions[row, ])
-  preds = rep(preds, times = nTrials/length(preds))
-  preds = noise(preds, standardDeviation)
-  data = rbind(trialSet, trialSet)
-  data$Returned = preds
-  
-  result = fmincon(obj_function,x0 = initial_params,
-                   lb = lower_bounds, ub = upper_bounds,
-                   df = data)
-  resultAlt = fmincon(obj_functionAlt, x0 = initial_paramsAlt,
-                      lb = lower_boundsAlt, ub = upper_boundsAlt,
-                      df = data)
-  data$Preds = generatePredictions(result$par, data)
-  data$PredsAlt = generatePredictionsAlt(resultAlt$par, data)
-  data$Preds = warp(data$Preds, data$Investment * 2, 
-                    max(data$Investment * 2), 0, Factor)
-  data$PredsAlt = warp(data$PredsAlt, data$Investment * 2, 
-                       max(data$Investment * 2), 0, Factor)
-  
-  df$NLL[i] = -sum(dnorm(data$Returned, mean = data$Preds, 
-                         sd = sd(data$Returned - data$Preds), log = TRUE))
-  df$NLL_alt[i] = -sum(dnorm(data$Returned, mean = data$PredsAlt, 
-                             sd = sd(data$Returned - data$PredsAlt), log = TRUE))
-}
-
-df$BIC = 2 * df$NLL + 2 * log(nrow(data))
-df$BIC_alt = 2 * df$NLL_alt + 3 * log(nrow(data))
-test = vector('logical', 100000)
-better = vector('logical', 100000)
-for (i in 1:length(test)){
-  subsample = df[sample(1:nrow(df), sampleSize, replace = T), ]
-  better[i] = sum(subsample$BIC) < sum(subsample$BIC_alt)
-  test[i] = t.test(subsample$BIC, subsample$BIC_alt, paired = T)$p.value < 0.05
-}
-contingency = table(better, test)
-plottingInfoAll$Count[which(plottingInfoAll$factor == Factor)] = 
-  as.vector(contingency)
-```
-
-## Factor = 0.5
-
-```{r}
-Factor = 0.5
-df = n1000
-df = as.data.frame(df)
-df$NLL = 0
-df$NLL_alt = 0
-for (i in 1:nrow(df)){
-  row = which(round(freeParameters$theta, 2) == round(df$theta[i], 2) & 
-                round(freeParameters$phi, 2) == round(df$phi[i], 2))
-  preds = as.numeric(predictions[row, ])
-  preds = rep(preds, times = nTrials/length(preds))
-  preds = noise(preds, standardDeviation)
-  data = rbind(trialSet, trialSet)
-  data$Returned = preds
-  
-  result = fmincon(obj_function,x0 = initial_params,
-                   lb = lower_bounds, ub = upper_bounds,
-                   df = data)
-  resultAlt = fmincon(obj_functionAlt, x0 = initial_paramsAlt,
-                      lb = lower_boundsAlt, ub = upper_boundsAlt,
-                      df = data)
-  data$Preds = generatePredictions(result$par, data)
-  data$PredsAlt = generatePredictionsAlt(resultAlt$par, data)
-  data$Preds = warp(data$Preds, data$Investment * 2, 
-                    max(data$Investment * 2), 0, Factor)
-  data$PredsAlt = warp(data$PredsAlt, data$Investment * 2, 
-                       max(data$Investment * 2), 0, Factor)
-  
-  df$NLL[i] = -sum(dnorm(data$Returned, mean = data$Preds, 
-                         sd = sd(data$Returned - data$Preds), log = TRUE))
-  df$NLL_alt[i] = -sum(dnorm(data$Returned, mean = data$PredsAlt, 
-                             sd = sd(data$Returned - data$PredsAlt), log = TRUE))
-}
-
-df$BIC = 2 * df$NLL + 2 * log(nrow(data))
-df$BIC_alt = 2 * df$NLL_alt + 3 * log(nrow(data))
-test = vector('logical', 100000)
-better = vector('logical', 100000)
-for (i in 1:length(test)){
-  subsample = df[sample(1:nrow(df), sampleSize, replace = T), ]
-  better[i] = sum(subsample$BIC) < sum(subsample$BIC_alt)
-  test[i] = t.test(subsample$BIC, subsample$BIC_alt, paired = T)$p.value < 0.05
-}
-contingency = table(better, test)
-plottingInfoAll$Count[which(plottingInfoAll$factor == Factor)] = 
-  as.vector(contingency)
-```
-
-## **Factor = 1**
-
-```{r}
-Factor = 1
-df = n1000
-df = as.data.frame(df)
-df$NLL = 0
-df$NLL_alt = 0
-for (i in 1:nrow(df)){
-  row = which(round(freeParameters$theta, 2) == round(df$theta[i], 2) & 
-                round(freeParameters$phi, 2) == round(df$phi[i], 2))
-  preds = as.numeric(predictions[row, ])
-  preds = rep(preds, times = nTrials/length(preds))
-  preds = noise(preds, standardDeviation)
-  data = rbind(trialSet, trialSet)
-  data$Returned = preds
-  
-  result = fmincon(obj_function,x0 = initial_params,
-                   lb = lower_bounds, ub = upper_bounds,
-                   df = data)
-  resultAlt = fmincon(obj_functionAlt, x0 = initial_paramsAlt,
-                      lb = lower_boundsAlt, ub = upper_boundsAlt,
-                      df = data)
-  data$Preds = generatePredictions(result$par, data)
-  data$PredsAlt = generatePredictionsAlt(resultAlt$par, data)
-  data$Preds = warp(data$Preds, data$Investment * 2, 
-                    max(data$Investment * 2), 0, Factor)
-  data$PredsAlt = warp(data$PredsAlt, data$Investment * 2, 
-                       max(data$Investment * 2), 0, Factor)
-  
-  df$NLL[i] = -sum(dnorm(data$Returned, mean = data$Preds, 
-                         sd = sd(data$Returned - data$Preds), log = TRUE))
-  df$NLL_alt[i] = -sum(dnorm(data$Returned, mean = data$PredsAlt, 
-                             sd = sd(data$Returned - data$PredsAlt), log = TRUE))
-}
-
-df$BIC = 2 * df$NLL + 2 * log(nrow(data))
-df$BIC_alt = 2 * df$NLL_alt + 3 * log(nrow(data))
-test = vector('logical', 100000)
-better = vector('logical', 100000)
-for (i in 1:length(test)){
-  subsample = df[sample(1:nrow(df), sampleSize, replace = T), ]
-  better[i] = sum(subsample$BIC) < sum(subsample$BIC_alt)
-  test[i] = t.test(subsample$BIC, subsample$BIC_alt, paired = T)$p.value < 0.05
-}
-contingency = table(better, test)
-plottingInfoAll$Count[which(plottingInfoAll$factor == Factor)] = 
-  as.vector(contingency)
-```
-
-## Factor = 1.5
-
-```{r}
-Factor = 1.5
-df = n1000
-df = as.data.frame(df)
-df$NLL = 0
-df$NLL_alt = 0
-for (i in 1:nrow(df)){
-  row = which(round(freeParameters$theta, 2) == round(df$theta[i], 2) & 
-                round(freeParameters$phi, 2) == round(df$phi[i], 2))
-  preds = as.numeric(predictions[row, ])
-  preds = rep(preds, times = nTrials/length(preds))
-  preds = noise(preds, standardDeviation)
-  data = rbind(trialSet, trialSet)
-  data$Returned = preds
-  
-  result = fmincon(obj_function,x0 = initial_params,
-                   lb = lower_bounds, ub = upper_bounds,
-                   df = data)
-  resultAlt = fmincon(obj_functionAlt, x0 = initial_paramsAlt,
-                      lb = lower_boundsAlt, ub = upper_boundsAlt,
-                      df = data)
-  data$Preds = generatePredictions(result$par, data)
-  data$PredsAlt = generatePredictionsAlt(resultAlt$par, data)
-  data$Preds = warp(data$Preds, data$Investment * 2, 
-                    max(data$Investment * 2), 0, Factor)
-  data$PredsAlt = warp(data$PredsAlt, data$Investment * 2, 
-                       max(data$Investment * 2), 0, Factor)
-  
-  df$NLL[i] = -sum(dnorm(data$Returned, mean = data$Preds, 
-                         sd = sd(data$Returned - data$Preds), log = TRUE))
-  df$NLL_alt[i] = -sum(dnorm(data$Returned, mean = data$PredsAlt, 
-                             sd = sd(data$Returned - data$PredsAlt), log = TRUE))
-}
-
-df$BIC = 2 * df$NLL + 2 * log(nrow(data))
-df$BIC_alt = 2 * df$NLL_alt + 3 * log(nrow(data))
-test = vector('logical', 100000)
-better = vector('logical', 100000)
-for (i in 1:length(test)){
-  subsample = df[sample(1:nrow(df), sampleSize, replace = T), ]
-  better[i] = sum(subsample$BIC) < sum(subsample$BIC_alt)
-  test[i] = t.test(subsample$BIC, subsample$BIC_alt, paired = T)$p.value < 0.05
-}
-contingency = table(better, test)
-plottingInfoAll$Count[which(plottingInfoAll$factor == Factor)] = 
-  as.vector(contingency)
-
-
-plottingInfoAll$factor = as.factor(plottingInfoAll$Factor)
+plottingInfoAll$factor = factor(plottingInfoAll$factor, 
+                                levels = c(1.5, 1, 0.5, 0.25, 0))
 plottingInfoAll$Outcome = factor(plottingInfoAll$Outcome,
                                  levels = c("Correct & p < 0.05",
                                             "Correct & N.S.", 
@@ -304,5 +105,5 @@ ggplot(data = plottingInfoAll, aes(x = Proportion, y = factor, group = Outcome,
 Now save workspace for later reference
 
 ```{r}
-save.image(file = "C:/Users/DELL/Documents/socog/heteroscedasticity.RData")
+save.image(file = "C:/Users/DELL/Documents/socog/bias.RData")
 ```

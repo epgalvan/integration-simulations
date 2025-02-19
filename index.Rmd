@@ -1,4 +1,4 @@
-# Integration Proof
+# Supplementary Information for Box 3
 
 The present document contains information providing that, at least for the example of van Baar, Chang, and Sanfey's Hidden Multiplier Trust Game (2019), it is better to create a single integrated model that explains why conditions are different rather than to fit models per condition. This proof will follow as a logical argument, illustrated with simulated data.
 
