@@ -3,7 +3,7 @@
 Load file
 
 ```{r}
-load(file = "C:/Users/DELL/Documents/socog/sampleSize.RData")
+load(file = "C:/Users/DELL/Documents/integration-simulations/sampleSize.RData")
 library(pracma)
 library(ggplot2)
 ```
@@ -81,6 +81,7 @@ these = which(plottingInfoAll$Outcome == "Incorrect & p < 0.05")
 those = which(plottingInfoAll$Outcome == "Incorrect & N.S.")
 plottingInfoAll$Position[those] = max(plottingInfoAll$Proportion[these] +
   plottingInfoAll$Proportion[those]/2, 0.2)
+plottingInfoAll$Position[which(plottingInfoAll$Proportion == 0)] = 2
 ggplot(data = plottingInfoAll, aes(x = Proportion, y = MPI, group = Outcome,
                                    fill = Outcome)) + 
   geom_col() + theme_minimal() + 
@@ -94,5 +95,5 @@ ggplot(data = plottingInfoAll, aes(x = Proportion, y = MPI, group = Outcome,
 Now save workspace for later reference
 
 ```{r}
-save.image(file = "C:/Users/DELL/Documents/socog/modelFitIndex.RData")
+save.image(file = "C:/Users/DELL/Documents/integration-simulations/modelFitIndex.RData")
 ```
