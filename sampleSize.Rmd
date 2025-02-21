@@ -17,39 +17,38 @@ nTrials = 60
 Estimate parameters for these simulations
 
 ```{r}
-#df = n1000
-#df = as.data.frame(df)
-#df$NLL = 0
-#df$NLL_alt = 0
-#for (i in 1:nrow(df)){
-#  row = which(round(freeParameters$theta, 2) == round(df$theta[i], 2) & 
-#                round(freeParameters$phi, 2) == round(df$phi[i], 2))
-#  preds = as.numeric(predictions[row, ])
-#  preds = rep(preds, times = nTrials/length(preds))
-#  preds = noise(preds)
-#  data = rbind(trialSet, trialSet)
-#  data$Transferred = preds
-#  
-#  
-#  result = tryCatch({fmincon(obj_function,x0 = initial_params,
-#                     lb = lower_bounds, ub = upper_bounds,
-#                     df = data)}, error = function(e){data.frame(par = NA)})
-#  resultAlt = tryCatch({fmincon(obj_functionAlt, x0 = initial_paramsAlt,
-#                        lb = lower_boundsAlt, ub = upper_boundsAlt,
-#                        df = data)}, error = function(e){data.frame(par = NA)})
-#  if (is.na(resultAlt$par[1]) | is.na(result$par[1])){
-#    df$NLL[i] = NA; df$NLL_alt[i] = NA; next
-#  }
-#  
-#  data$Preds = generatePredictions(result$par, data)
-#  data$PredsAlt = generatePredictionsAlt(resultAlt$par, data)
-#  
-#  df$NLL[i] = -sum(dnorm(data$Transferred, mean = data$Preds, 
-#                         sd = sd(data$Transferred - data$Preds), log = T))
-#  df$NLL_alt[i] = -sum(dnorm(data$Transferred, mean = data$PredsAlt, 
-#                             sd = sd(data$Transferred - data$PredsAlt), log = T))
-#}
-load(file = "C:/Users/DELL/Documents/integration-simulations/sampleSize.RData")
+df = n1000
+df = as.data.frame(df)
+df$NLL = 0
+df$NLL_alt = 0
+for (i in 1:nrow(df)){
+  row = which(round(freeParameters$theta, 2) == round(df$theta[i], 2) & 
+                round(freeParameters$phi, 2) == round(df$phi[i], 2))
+  preds = as.numeric(predictions[row, ])
+  preds = rep(preds, times = nTrials/length(preds))
+  preds = noise(preds)
+  data = rbind(trialSet, trialSet)
+  data$Transferred = preds
+  
+  
+  result = tryCatch({fmincon(obj_function,x0 = initial_params,
+                     lb = lower_bounds, ub = upper_bounds,
+                     df = data)}, error = function(e){data.frame(par = NA)})
+  resultAlt = tryCatch({fmincon(obj_functionAlt, x0 = initial_paramsAlt,
+                        lb = lower_boundsAlt, ub = upper_boundsAlt,
+                        df = data)}, error = function(e){data.frame(par = NA)})
+  if (is.na(resultAlt$par[1]) | is.na(result$par[1])){
+    df$NLL[i] = NA; df$NLL_alt[i] = NA; next
+  }
+  
+  data$Preds = generatePredictions(result$par, data)
+  data$PredsAlt = generatePredictionsAlt(resultAlt$par, data)
+  
+  df$NLL[i] = -sum(dnorm(data$Transferred, mean = data$Preds, 
+                         sd = sd(data$Transferred - data$Preds), log = T))
+  df$NLL_alt[i] = -sum(dnorm(data$Transferred, mean = data$PredsAlt, 
+                             sd = sd(data$Transferred - data$PredsAlt), log = T))
+}
 ```
 
 Count number of missing instances
@@ -143,5 +142,5 @@ ggplot(data = plottingInfoAll, aes(x = Proportion, y = N, group = Outcome,
 And save for other uses and verification
 
 ```{r}
-#save.image(file = "C:/Users/DELL/Documents/integration-simulations/sampleSize.RData")
+save.image(file = "C:/Users/DELL/Documents/integration-simulations/sampleSize.RData")
 ```

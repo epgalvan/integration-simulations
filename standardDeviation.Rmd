@@ -3,12 +3,12 @@
 Load file
 
 ```{r}
-load(file = "C:/Users/DELL/Documents/socog/modelFitIndex.RData")
+load(file = "C:/Users/DELL/Documents/integration-simulations/index.Rdata")
 library(pracma)
 library(ggplot2)
 ```
 
-## ***SD*** **= 1**
+Estimate parameters for these simulations and plot
 
 ```{r}
 plottingInfoAll = data.frame(Outcome = rep(c("Incorrect & N.S.", 
@@ -16,182 +16,97 @@ plottingInfoAll = data.frame(Outcome = rep(c("Incorrect & N.S.",
                                              "Incorrect & p < 0.05",
                                              "Correct & p < 0.05"), times = 4),
                              Count = 0,
-                             SD = rep(c(0, 1, 2, 3), each = 4))
+                             SD = rep(c(0, 1, 2, 5), each = 4))
 
-standardDeviation = 1
 sampleSize = 100
 nTrials = 60
-test = vector('logical', 100000)
-better = vector('logical', 100000)
-for (i in 1:length(test)){
-  subsample = df[sample(1:nrow(df), sampleSize, replace = T), ]
-  better[i] = sum(subsample$BIC) < sum(subsample$BIC_alt)
-  test[i] = t.test(subsample$BIC, subsample$BIC_alt, paired = T)$p.value < 0.05
+standardDeviations = c(0, 1, 2, 5)
+
+for (standardDeviation in standardDeviations){
+  df = n1000
+  for (i in 1:nrow(df)){
+    row = which(round(freeParameters$theta, 2) == round(df$theta[i], 2) & 
+                  round(freeParameters$phi, 2) == round(df$phi[i], 2))
+    preds = as.numeric(predictions[row, ])
+    preds = rep(preds, times = nTrials/length(preds))
+    preds = noise(preds, standardDeviation)
+    data = rbind(trialSet, trialSet)
+    data$Transferred = preds
+    
+    
+    result = tryCatch({fmincon(obj_function,x0 = initial_params,
+                       lb = lower_bounds, ub = upper_bounds,
+                       df = data)}, error = function(e){data.frame(par = NA)})
+    resultAlt = tryCatch({fmincon(obj_functionAlt, x0 = initial_paramsAlt,
+                          lb = lower_boundsAlt, ub = upper_boundsAlt,
+                          df = data)}, error = function(e){data.frame(par = NA)})
+    if (is.na(resultAlt$par[1]) | is.na(result$par[1])){
+      df$NLL[i] = NA; df$NLL_alt[i] = NA; next
+    }
+    
+    data$Preds = generatePredictions(result$par, data)
+    data$PredsAlt = generatePredictionsAlt(resultAlt$par, data)
+    
+    df$NLL[i] = -sum(dnorm(data$Transferred, mean = data$Preds, 
+                           sd = sd(data$Transferred - data$Preds), log = T))
+    df$NLL_alt[i] = -sum(dnorm(data$Transferred, mean = data$PredsAlt, 
+                               sd = sd(data$Transferred - data$PredsAlt), log = T))
+  }
+  df$BIC = 2 * df$NLL + 2 * log(nrow(data))
+  df$BIC_alt = 2 * df$NLL_alt + 3 * log(nrow(data))
+  if ((sum(is.na(df$NLL)) + sum(is.na(df$NLL_alt))) > 0){
+    df = df[-which(is.na(df$NLL) | is.na(df$NLL_alt)), ]
+  }
+  test = vector('logical', 100000)
+  better = vector('logical', 100000)
+  for (i in 1:length(test)){
+    subsample = df[sample(1:nrow(df), sampleSize, replace = T), ]
+    better[i] = sum(subsample$BIC) < sum(subsample$BIC_alt)
+    test[i] = t.test(subsample$BIC, subsample$BIC_alt, paired = T)$p.value < 0.05
+  }
+  plottingInfoAll$Count[which(plottingInfoAll$SD == standardDeviation & 
+                              plottingInfoAll$Outcome == "Incorrect & N.S.")] = 
+    sum(better==F & test==F)
+  plottingInfoAll$Count[which(plottingInfoAll$SD == standardDeviation & 
+                              plottingInfoAll$Outcome == "Correct & N.S.")] = 
+    sum(better==T & test==F)
+  plottingInfoAll$Count[which(plottingInfoAll$SD == standardDeviation & 
+                              plottingInfoAll$Outcome == "Incorrect & p < 0.05")] = 
+    sum(better==F & test==T)
+  plottingInfoAll$Count[which(plottingInfoAll$SD == standardDeviation & 
+                              plottingInfoAll$Outcome == "Correct & p < 0.05")] = 
+    sum(better==T & test==T)
 }
-contingency = table(better, test)
-plottingInfoAll$Count[which(plottingInfoAll$SD == standardDeviation)] = 
-  as.vector(contingency)
 ```
 
-## ***SD*** **= 0.5**
+And plot
 
 ```{r}
-standardDeviation = 0.5
-df = n1000
-df = as.data.frame(df)
-df$NLL = 0
-df$NLL_alt = 0
-for (i in 1:nrow(df)){
-  row = which(round(freeParameters$theta, 2) == round(df$theta[i], 2) & 
-                round(freeParameters$phi, 2) == round(df$phi[i], 2))
-  preds = as.numeric(predictions[row, ])
-  preds = rep(preds, times = nTrials/length(preds))
-  preds = noise(preds, standardDeviation)
-  data = rbind(trialSet, trialSet)
-  data$Returned = preds
-  
-  result = fmincon(obj_function,x0 = initial_params,
-                   lb = lower_bounds, ub = upper_bounds,
-                   df = data)
-  resultAlt = fmincon(obj_functionAlt, x0 = initial_paramsAlt,
-                      lb = lower_boundsAlt, ub = upper_boundsAlt,
-                      df = data)
-  data$Preds = generatePredictions(result$par, data)
-  data$PredsAlt = generatePredictionsAlt(resultAlt$par, data)
-  
-  df$NLL[i] = -sum(dnorm(data$Returned, mean = data$Preds, 
-                         sd = sd(data$Returned - data$Preds), log = TRUE))
-  df$NLL_alt[i] = -sum(dnorm(data$Returned, mean = data$PredsAlt, 
-                             sd = sd(data$Returned - data$PredsAlt), log = TRUE))
-}
-
-df$BIC = 2 * df$NLL + 2 * log(nrow(data))
-df$BIC_alt = 2 * df$NLL_alt + 3 * log(nrow(data))
-test = vector('logical', 100000)
-better = vector('logical', 100000)
-for (i in 1:length(test)){
-  subsample = df[sample(1:nrow(df), sampleSize, replace = T), ]
-  better[i] = sum(subsample$BIC) < sum(subsample$BIC_alt)
-  test[i] = t.test(subsample$BIC, subsample$BIC_alt, paired = T)$p.value < 0.05
-}
-contingency = table(better, test)
-plottingInfoAll$Count[which(plottingInfoAll$SD == standardDeviation)] = 
-  as.vector(contingency)
-```
-
-## ***SD*** **= 2**
-
-```{r}
-standardDeviation = 2
-df = n1000
-df = as.data.frame(df)
-df$NLL = 0
-df$NLL_alt = 0
-for (i in 1:nrow(df)){
-  row = which(round(freeParameters$theta, 2) == round(df$theta[i], 2) & 
-                round(freeParameters$phi, 2) == round(df$phi[i], 2))
-  preds = as.numeric(predictions[row, ])
-  preds = rep(preds, times = nTrials/length(preds))
-  preds = noise(preds, standardDeviation)
-  data = rbind(trialSet, trialSet)
-  data$Returned = preds
-  
-  result = fmincon(obj_function,x0 = initial_params,
-                   lb = lower_bounds, ub = upper_bounds,
-                   df = data)
-  resultAlt = fmincon(obj_functionAlt, x0 = initial_paramsAlt,
-                      lb = lower_boundsAlt, ub = upper_boundsAlt,
-                      df = data)
-  data$Preds = generatePredictions(result$par, data)
-  data$PredsAlt = generatePredictionsAlt(resultAlt$par, data)
-  
-  df$NLL[i] = -sum(dnorm(data$Returned, mean = data$Preds, 
-                         sd = sd(data$Returned - data$Preds), log = TRUE))
-  df$NLL_alt[i] = -sum(dnorm(data$Returned, mean = data$PredsAlt, 
-                             sd = sd(data$Returned - data$PredsAlt), log = TRUE))
-}
-
-df$BIC = 2 * df$NLL + 2 * log(nrow(data))
-df$BIC_alt = 2 * df$NLL_alt + 3 * log(nrow(data))
-test = vector('logical', 100000)
-better = vector('logical', 100000)
-for (i in 1:length(test)){
-  subsample = df[sample(1:nrow(df), sampleSize, replace = T), ]
-  better[i] = sum(subsample$BIC) < sum(subsample$BIC_alt)
-  test[i] = t.test(subsample$BIC, subsample$BIC_alt, paired = T)$p.value < 0.05
-}
-contingency = table(better, test)
-plottingInfoAll$Count[which(plottingInfoAll$SD == standardDeviation)] = 
-  as.vector(contingency)
-```
-
-## ***SD*** **= 3**
-
-```{r}
-standardDeviation = 3
-df = n1000
-df = as.data.frame(df)
-df$NLL = 0
-df$NLL_alt = 0
-for (i in 1:nrow(df)){
-  row = which(round(freeParameters$theta, 2) == round(df$theta[i], 2) & 
-                round(freeParameters$phi, 2) == round(df$phi[i], 2))
-  preds = as.numeric(predictions[row, ])
-  preds = rep(preds, times = nTrials/length(preds))
-  preds = noise(preds, standardDeviation)
-  data = rbind(trialSet, trialSet)
-  data$Returned = preds
-  
-  result = fmincon(obj_function,x0 = initial_params,
-                   lb = lower_bounds, ub = upper_bounds,
-                   df = data)
-  resultAlt = fmincon(obj_functionAlt, x0 = initial_paramsAlt,
-                      lb = lower_boundsAlt, ub = upper_boundsAlt,
-                      df = data)
-  data$Preds = generatePredictions(result$par, data)
-  data$PredsAlt = generatePredictionsAlt(resultAlt$par, data)
-  
-  df$NLL[i] = -sum(dnorm(data$Returned, mean = data$Preds, 
-                         sd = sd(data$Returned - data$Preds), log = TRUE))
-  df$NLL_alt[i] = -sum(dnorm(data$Returned, mean = data$PredsAlt, 
-                             sd = sd(data$Returned - data$PredsAlt), log = TRUE))
-}
-
-df$BIC = 2 * df$NLL + 2 * log(nrow(data))
-df$BIC_alt = 2 * df$NLL_alt + 3 * log(nrow(data))
-test = vector('logical', 100000)
-better = vector('logical', 100000)
-for (i in 1:length(test)){
-  subsample = df[sample(1:nrow(df), sampleSize, replace = T), ]
-  better[i] = sum(subsample$BIC) < sum(subsample$BIC_alt)
-  test[i] = t.test(subsample$BIC, subsample$BIC_alt, paired = T)$p.value < 0.05
-}
-contingency = table(better, test)
-plottingInfoAll$Count[which(plottingInfoAll$SD == standardDeviation)] = 
-  as.vector(contingency)
-
-
-
-plottingInfoAll$SD = as.factor(plottingInfoAll$SD)
+plottingInfoAll$SD = factor(plottingInfoAll$SD, levels = c(5, 2, 1, 0))
 plottingInfoAll$Outcome = factor(plottingInfoAll$Outcome,
                                  levels = c("Correct & p < 0.05",
                                             "Correct & N.S.", 
                                             "Incorrect & N.S.",
                                             "Incorrect & p < 0.05"))
-plottingInfoAll$Proportion = plottingInfoAll$Count/100000
-plottingInfoAll$Position = plottingInfoAll$Proportion/2
+plottingInfoAll$Proportion = (plottingInfoAll$Count/length(test))
 
 these = which(plottingInfoAll$Outcome == "Correct & p < 0.05")
-plottingInfoAll$Position[these] = 1 - plottingInfoAll$Proportion[these]/2
+plottingInfoAll$Position[these] = 1.175
 
 those = which(plottingInfoAll$Outcome == "Correct & N.S.")
 plottingInfoAll$Position[those] = 1 - plottingInfoAll$Proportion[these] -
   plottingInfoAll$Proportion[those]/2
 
+plottingInfoAll$Position[those[which(plottingInfoAll$Proportion[these] == 0)]] = 1.175
+
 these = which(plottingInfoAll$Outcome == "Incorrect & p < 0.05")
+plottingInfoAll$Position[these] = plottingInfoAll$Proportion[these]/2
 those = which(plottingInfoAll$Outcome == "Incorrect & N.S.")
-plottingInfoAll$Position[those] = max(plottingInfoAll$Proportion[these] +
-  plottingInfoAll$Proportion[those]/2, 0.2)
+plottingInfoAll$Position[those] = plottingInfoAll$Proportion[these] +
+  plottingInfoAll$Proportion[those]/2
+
+plottingInfoAll$Position[which(plottingInfoAll$Proportion == 0)] = 2
+
 ggplot(data = plottingInfoAll, aes(x = Proportion, y = SD, group = Outcome,
                                    fill = Outcome)) + 
   geom_col() + theme_minimal() + 
@@ -205,5 +120,5 @@ ggplot(data = plottingInfoAll, aes(x = Proportion, y = SD, group = Outcome,
 Now save workspace for later reference
 
 ```{r}
-save.image(file = "C:/Users/DELL/Documents/socog/standardDeviation.RData")
+save.image(file = "C:/Users/DELL/Documents/integration-simulations/standardDeviation.RData")
 ```
