@@ -1,289 +1,135 @@
 # Trial Count
 
-## *N* = 60
+Load file
 
 ```{r}
-load(file = "C:/Users/DELL/Documents/socog/sampleSize.RData")
+load(file = "C:/Users/DELL/Documents/integration-simulations/index.RData")
 library(pracma)
 library(ggplot2)
+```
 
+Estimate parameters for these simulations and plot
+
+```{r}
 plottingInfoAll = data.frame(Outcome = rep(c("Incorrect & N.S.", 
                                              "Correct & N.S.", 
                                              "Incorrect & p < 0.05",
-                                             "Correct & p < 0.05"), times = 6),
+                                             "Correct & p < 0.05"), times = 4),
                              Count = 0,
-                             trialCount = rep(seq(30, 180, 30), each = 4))
+                             trialCount = rep(c(30, 60, 120, 180), each = 4))
 
-nTrials = 60
-sampleSize = 100
-test = vector('logical', 100000)
-better = vector('logical', 100000)
-for (i in 1:length(test)){
-  subsample = df[sample(1:nrow(df), sampleSize, replace = T), ]
-  better[i] = sum(subsample$BIC) < sum(subsample$BIC_alt)
-  test[i] = t.test(subsample$BIC, subsample$BIC_alt, paired = T)$p.value < 0.05
+sampleSize = 60
+countTrials = c(30, 60, 120, 180)
+
+for (nTrials in countTrials){
+  df = n1000[sample(200), ]
+  for (i in 1:nrow(df)){
+    row = which(round(freeParameters$theta, 2) == round(df$theta[i], 2) & 
+                  round(freeParameters$phi, 2) == round(df$phi[i], 2))
+    preds = as.numeric(predictions[row, ])
+    preds = rep(preds, times = nTrials/length(preds))
+    data = rbind(trialSet, trialSet, trialSet, trialSet, trialSet, trialSet)
+    data = data[1:length(preds),]
+    data$Transferred = noise(preds, data$Endowment)
+    
+    result = tryCatch({fmincon(obj_function,x0 = initial_params,
+                       lb = lower_bounds, ub = upper_bounds,
+                       df = data)}, error = function(e){data.frame(par = NA)})
+    resultAlt = tryCatch({optimizePerCondition(df = data)}, 
+                         error = function(e){data.frame(par = NA)})
+    if (is.na(resultAlt$par[1]) | is.na(result$par[1])){
+      df$NLL[i] = NA; df$NLL_alt[i] = NA; next
+    }
+    
+    data$Preds = generatePredictions(result$par, data)
+    data$PredsAlt = generateAltPerCondition(resultAlt$par, data)
+    
+    if (sum(data$Preds == data$Transferred)==nrow(data)){
+      data$Preds[sample(nrow(data), 1)] =+ 1
+    }
+    if (sum(data$PredsAlt == data$Transferred)==nrow(data)){
+      data$PredsAlt[sample(nrow(data), 1)] =+ 1
+    }
+    
+    df$NLL[i] = -sum(dnorm(data$Transferred/data$Endowment, 
+                           mean = data$Preds/data$Endowment, 
+                           sd = sd((data$Transferred - data$Preds)/data$Endowment),
+                           log = T))
+    df$NLL_alt[i] = -sum(dnorm(data$Transferred/data$Endowment, 
+                               mean = data$PredsAlt/data$Endowment, 
+                           sd = sd((data$Transferred - data$PredsAlt)/data$Endowment), log = T))
+    df$thetaR[i] = result$par[1]; df$phiR[i] = result$par[2]
+    df$theta0[i] = resultAlt$par[1]; df$theta5[i] = resultAlt$par[2]; df$theta1[i] = resultAlt$par[3];
+  }
+  df$BIC = 2 * df$NLL + 2 * log(nrow(data))
+  df$BIC_alt = 2 * df$NLL_alt + 3 * log(nrow(data))
+  if ((sum(is.na(df$NLL)) + sum(is.na(df$NLL_alt))) > 0){
+    df = df[-which(is.na(df$NLL) | is.na(df$NLL_alt)), ]
+  }
+  test = vector('logical', 100000)
+  better = vector('logical', 100000)
+  for (i in 1:length(test)){
+    subsample = df[sample(1:nrow(df), sampleSize, replace = T), ]
+    better[i] = sum(subsample$BIC) < sum(subsample$BIC_alt)
+    test[i] = t.test(subsample$BIC, subsample$BIC_alt, paired = T)$p.value < 0.05
+  }
+  plottingInfoAll$Count[which(plottingInfoAll$trialCount == nTrials & 
+                              plottingInfoAll$Outcome == "Incorrect & N.S.")] = 
+    sum(better==F & test==F)
+  plottingInfoAll$Count[which(plottingInfoAll$trialCount == nTrials & 
+                              plottingInfoAll$Outcome == "Correct & N.S.")] = 
+    sum(better==T & test==F)
+  plottingInfoAll$Count[which(plottingInfoAll$trialCount == nTrials & 
+                              plottingInfoAll$Outcome == "Incorrect & p < 0.05")] = 
+    sum(better==F & test==T)
+  plottingInfoAll$Count[which(plottingInfoAll$trialCount == nTrials & 
+                              plottingInfoAll$Outcome == "Correct & p < 0.05")] = 
+    sum(better==T & test==T)
 }
-contingency = table(better, test)
-plottingInfoAll$Count[which(plottingInfoAll$trialCount == nTrials)] = 
-  as.vector(contingency)
 ```
 
-## *N* = 30
+And plot
 
 ```{r}
-nTrials = 30
-
-df$NLL = 0
-df$NLL_alt = 0
-for (i in 1:nrow(df)){
-  row = which(round(freeParameters$theta, 2) == round(df$theta[i], 2) & 
-                round(freeParameters$phi, 2) == round(df$phi[i], 2))
-  preds = as.numeric(predictions[row, ])
-  preds = rep(preds, times = nTrials/length(preds))
-  preds = noise(preds)
-  data = trialSet
-  data$Returned = preds
-  
-  result = fmincon(obj_function,x0 = initial_params,
-                   lb = lower_bounds, ub = upper_bounds,
-                   df = data)
-  resultAlt = fmincon(obj_functionAlt, x0 = initial_paramsAlt,
-                      lb = lower_boundsAlt, ub = upper_boundsAlt,
-                      df = data)
-  data$Preds = generatePredictions(result$par, data)
-  data$PredsAlt = generatePredictionsAlt(resultAlt$par, data)
-  
-  df$NLL[i] = -sum(dnorm(data$Returned, mean = data$Preds, 
-                         sd = sd(data$Returned - data$Preds), log = TRUE))
-  df$NLL_alt[i] = -sum(dnorm(data$Returned, mean = data$PredsAlt, 
-                             sd = sd(data$Returned - data$PredsAlt), log = TRUE))
-}
-df$BIC = 2 * df$NLL + 2 * log(nrow(data))
-df$BIC_alt = 2 * df$NLL_alt + 3 * log(nrow(data))
-
-test = vector('logical', 100000)
-better = vector('logical', 100000)
-for (i in 1:length(test)){
-  subsample = df[sample(1:nrow(df), sampleSize, replace = T), ]
-  better[i] = sum(subsample$BIC) < sum(subsample$BIC_alt)
-  test[i] = t.test(subsample$BIC, subsample$BIC_alt, paired = T)$p.value < 0.05
-}
-contingency = table(better, test)
-plottingInfoAll$Count[which(plottingInfoAll$trialCount == nTrials)] = 
-  as.vector(contingency)
-```
-
-## *N* = 90
-
-```{r}
-nTrials = 90
-
-df$NLL = 0
-df$NLL_alt = 0
-for (i in 1:nrow(df)){
-  row = which(round(freeParameters$theta, 2) == round(df$theta[i], 2) & 
-                round(freeParameters$phi, 2) == round(df$phi[i], 2))
-  preds = as.numeric(predictions[row, ])
-  preds = rep(preds, times = nTrials/length(preds))
-  preds = noise(preds)
-  data = rbind(trialSet, trialSet, trialSet)
-  data$Returned = preds
-  
-  result = fmincon(obj_function,x0 = initial_params,
-                   lb = lower_bounds, ub = upper_bounds,
-                   df = data)
-  resultAlt = fmincon(obj_functionAlt, x0 = initial_paramsAlt,
-                      lb = lower_boundsAlt, ub = upper_boundsAlt,
-                      df = data)
-  data$Preds = generatePredictions(result$par, data)
-  data$PredsAlt = generatePredictionsAlt(resultAlt$par, data)
-  
-  df$NLL[i] = -sum(dnorm(data$Returned, mean = data$Preds, 
-                         sd = sd(data$Returned - data$Preds), log = TRUE))
-  df$NLL_alt[i] = -sum(dnorm(data$Returned, mean = data$PredsAlt, 
-                             sd = sd(data$Returned - data$PredsAlt), log = TRUE))
-}
-df$BIC = 2 * df$NLL + 2 * log(nrow(data))
-df$BIC_alt = 2 * df$NLL_alt + 3 * log(nrow(data))
-
-test = vector('logical', 100000)
-better = vector('logical', 100000)
-for (i in 1:length(test)){
-  subsample = df[sample(1:nrow(df), sampleSize, replace = T), ]
-  better[i] = sum(subsample$BIC) < sum(subsample$BIC_alt)
-  test[i] = t.test(subsample$BIC, subsample$BIC_alt, paired = T)$p.value < 0.05
-}
-contingency = table(better, test)
-plottingInfoAll$Count[which(plottingInfoAll$trialCount == nTrials)] = 
-  as.vector(contingency)
-```
-
-## *N* = 120
-
-```{r}
-nTrials = 120
-
-df$NLL = 0
-df$NLL_alt = 0
-for (i in 1:nrow(df)){
-  row = which(round(freeParameters$theta, 2) == round(df$theta[i], 2) & 
-                round(freeParameters$phi, 2) == round(df$phi[i], 2))
-  preds = as.numeric(predictions[row, ])
-  preds = rep(preds, times = nTrials/length(preds))
-  preds = noise(preds)
-  data = rbind(trialSet, trialSet, trialSet, trialSet)
-  data$Returned = preds
-  
-  result = fmincon(obj_function,x0 = initial_params,
-                   lb = lower_bounds, ub = upper_bounds,
-                   df = data)
-  resultAlt = fmincon(obj_functionAlt, x0 = initial_paramsAlt,
-                      lb = lower_boundsAlt, ub = upper_boundsAlt,
-                      df = data)
-  data$Preds = generatePredictions(result$par, data)
-  data$PredsAlt = generatePredictionsAlt(resultAlt$par, data)
-  
-  df$NLL[i] = -sum(dnorm(data$Returned, mean = data$Preds, 
-                         sd = sd(data$Returned - data$Preds), log = TRUE))
-  df$NLL_alt[i] = -sum(dnorm(data$Returned, mean = data$PredsAlt, 
-                             sd = sd(data$Returned - data$PredsAlt), log = TRUE))
-}
-df$BIC = 2 * df$NLL + 2 * log(nrow(data))
-df$BIC_alt = 2 * df$NLL_alt + 3 * log(nrow(data))
-
-test = vector('logical', 100000)
-better = vector('logical', 100000)
-for (i in 1:length(test)){
-  subsample = df[sample(1:nrow(df), sampleSize, replace = T), ]
-  better[i] = sum(subsample$BIC) < sum(subsample$BIC_alt)
-  test[i] = t.test(subsample$BIC, subsample$BIC_alt, paired = T)$p.value < 0.05
-}
-contingency = table(better, test)
-plottingInfoAll$Count[which(plottingInfoAll$trialCount == nTrials)] = 
-  as.vector(contingency)
-```
-
-## *N* = 150
-
-```{r}
-nTrials = 150
-
-df$NLL = 0
-df$NLL_alt = 0
-for (i in 1:nrow(df)){
-  row = which(round(freeParameters$theta, 2) == round(df$theta[i], 2) & 
-                round(freeParameters$phi, 2) == round(df$phi[i], 2))
-  preds = as.numeric(predictions[row, ])
-  preds = rep(preds, times = nTrials/length(preds))
-  preds = noise(preds)
-  data = rbind(trialSet, trialSet, trialSet, trialSet, trialSet)
-  data$Returned = preds
-  
-  result = fmincon(obj_function,x0 = initial_params,
-                   lb = lower_bounds, ub = upper_bounds,
-                   df = data)
-  resultAlt = fmincon(obj_functionAlt, x0 = initial_paramsAlt,
-                      lb = lower_boundsAlt, ub = upper_boundsAlt,
-                      df = data)
-  data$Preds = generatePredictions(result$par, data)
-  data$PredsAlt = generatePredictionsAlt(resultAlt$par, data)
-  
-  df$NLL[i] = -sum(dnorm(data$Returned, mean = data$Preds, 
-                         sd = sd(data$Returned - data$Preds), log = TRUE))
-  df$NLL_alt[i] = -sum(dnorm(data$Returned, mean = data$PredsAlt, 
-                             sd = sd(data$Returned - data$PredsAlt), log = TRUE))
-}
-df$BIC = 2 * df$NLL + 2 * log(nrow(data))
-df$BIC_alt = 2 * df$NLL_alt + 3 * log(nrow(data))
-
-test = vector('logical', 100000)
-better = vector('logical', 100000)
-for (i in 1:length(test)){
-  subsample = df[sample(1:nrow(df), sampleSize, replace = T), ]
-  better[i] = sum(subsample$BIC) < sum(subsample$BIC_alt)
-  test[i] = t.test(subsample$BIC, subsample$BIC_alt, paired = T)$p.value < 0.05
-}
-contingency = table(better, test)
-plottingInfoAll$Count[which(plottingInfoAll$trialCount == nTrials)] = 
-  as.vector(contingency)
-```
-
-## *N* = 180
-
-```{r}
-nTrials = 180
-
-df$NLL = 0
-df$NLL_alt = 0
-for (i in 1:nrow(df)){
-  row = which(round(freeParameters$theta, 2) == round(df$theta[i], 2) & 
-                round(freeParameters$phi, 2) == round(df$phi[i], 2))
-  preds = as.numeric(predictions[row, ])
-  preds = rep(preds, times = nTrials/length(preds))
-  preds = noise(preds)
-  data = rbind(trialSet, trialSet, trialSet, trialSet, trialSet, trialSet)
-  data$Returned = preds
-  
-  result = fmincon(obj_function,x0 = initial_params,
-                   lb = lower_bounds, ub = upper_bounds,
-                   df = data)
-  resultAlt = fmincon(obj_functionAlt, x0 = initial_paramsAlt,
-                      lb = lower_boundsAlt, ub = upper_boundsAlt,
-                      df = data)
-  data$Preds = generatePredictions(result$par, data)
-  data$PredsAlt = generatePredictionsAlt(resultAlt$par, data)
-  
-  df$NLL[i] = -sum(dnorm(data$Returned, mean = data$Preds, 
-                         sd = sd(data$Returned - data$Preds), log = TRUE))
-  df$NLL_alt[i] = -sum(dnorm(data$Returned, mean = data$PredsAlt, 
-                             sd = sd(data$Returned - data$PredsAlt), log = TRUE))
-}
-df$BIC = 2 * df$NLL + 2 * log(nrow(data))
-df$BIC_alt = 2 * df$NLL_alt + 3 * log(nrow(data))
-
-test = vector('logical', 100000)
-better = vector('logical', 100000)
-for (i in 1:length(test)){
-  subsample = df[sample(1:nrow(df), sampleSize, replace = T), ]
-  better[i] = sum(subsample$BIC) < sum(subsample$BIC_alt)
-  test[i] = t.test(subsample$BIC, subsample$BIC_alt, paired = T)$p.value < 0.05
-}
-contingency = table(better, test)
-plottingInfoAll$Count[which(plottingInfoAll$trialCount == nTrials)] = 
-  as.vector(contingency)
-plottingInfoAll$trialCount = factor(plottingInfoAll$trialCount, levels = c("180", "150", "120", "90", "60", "30"))
+plottingInfoAll$trialCount = factor(plottingInfoAll$trialCount, 
+                                    levels = c(180, 120, 60, 30))
 
 plottingInfoAll$Outcome = factor(plottingInfoAll$Outcome,
                                  levels = c("Correct & p < 0.05",
                                             "Correct & N.S.", 
                                             "Incorrect & N.S.",
                                             "Incorrect & p < 0.05"))
-plottingInfoAll$Proportion = plottingInfoAll$Count/100000
-plottingInfoAll$Position = plottingInfoAll$Proportion/2
+plottingInfoAll$Proportion = (plottingInfoAll$Count/length(test))
 
 these = which(plottingInfoAll$Outcome == "Correct & p < 0.05")
-plottingInfoAll$Position[these] = 1 - plottingInfoAll$Proportion[these]/2
+plottingInfoAll$Position[these] = 1.175
 
 those = which(plottingInfoAll$Outcome == "Correct & N.S.")
 plottingInfoAll$Position[those] = 1 - plottingInfoAll$Proportion[these] -
   plottingInfoAll$Proportion[those]/2
 
+plottingInfoAll$Position[those[which(plottingInfoAll$Proportion[these] == 0)]] = 1.175
+
 these = which(plottingInfoAll$Outcome == "Incorrect & p < 0.05")
+plottingInfoAll$Position[these] = plottingInfoAll$Proportion[these]/2
 those = which(plottingInfoAll$Outcome == "Incorrect & N.S.")
-plottingInfoAll$Position[those] = max(plottingInfoAll$Proportion[these] +
-  plottingInfoAll$Proportion[those]/2, 0.2)
-ggplot(data = plottingInfoAll, aes(x = Proportion, y = trialCount, group = Outcome,
+plottingInfoAll$Position[those] = plottingInfoAll$Proportion[these] +
+  plottingInfoAll$Proportion[those]/2
+
+final = plottingInfoAll[-which(plottingInfoAll$Proportion == 0),]
+
+ggplot(data = final, aes(x = Proportion, y = trialCount, group = Outcome,
                                    fill = Outcome)) + 
   geom_col() + theme_minimal() + 
   scale_fill_manual(values = c("green", "forestgreen", "firebrick4", "red")) +
-  labs(x = "Proportion", y = "Number of Trials", 
+  labs(x = "Proportion", y = "Trial Count", 
        fill = "Result",
        label = NULL) + 
-  geom_label(aes(label = Proportion, x = Position)) + lims(x = c(-0.05, 1.05))
+  geom_label(aes(label = Proportion, x = Position)) + lims(x = c(-0.025, 1.25))
 ```
 
 Workspace for later reference
 
 ```{r}
-save.image(file = "C:/Users/DELL/Documents/socog/trialCount.RData")
+save.image(file = "C:/Users/DELL/Documents/integration-simulations/trialCount.RData")
 ```

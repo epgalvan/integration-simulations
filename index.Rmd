@@ -4,7 +4,7 @@ The present document shows that a per-condition model will often explain data ge
 
 ## Simulating Data
 
-The base simulation will contain no error, and will be based on a modulated effect on inequality-aversion following the instructions outlined in Galvan and Sanfey's paper in *Social Cognition* (2025). In this example, consider a Dictator Game with multiple conditions reflecting one's game partner: a spouse, a generic other, and a rival. The model will state that liking (spouse = 1), (generic other= 0.5), (rival = 0) can modulate these preferences.
+The base simulation will contain no error, and will be based on a modulated effect on inequality-aversion following the instructions outlined in Galvan and Sanfey's paper in *Social Cognition* (2025) and in the handbook. This is an illustrative example: consider the not-so outlandish claim that selfishness in an interpersonal interaction can be affected by both (a) generic distributive preferences and (b) the extent to one (dis)likes another person. In other words, the extent to which one likes another person may ***modulate*** their distributive preferences. First we need base functions that serve as input to a model.
 
 ### Base Functions
 
@@ -33,6 +33,8 @@ modulator = function(liking){
 
 ### Utility Equation
 
+Now we need the utility equation: theta will be the baseline distributive preferences (low = selfless, high = selfish) and phi will be the weight placed on modulation (low = independent on relation to game partner, high = dependent).
+
 ```{r}
 utility = function(theta, phi, modulator, inequality, payout){
   thetaMod = theta * (1-phi) + modulator * phi
@@ -40,7 +42,11 @@ utility = function(theta, phi, modulator, inequality, payout){
 }
 ```
 
+Of course, this is extremely unlikely to represent all of the ways that people's relation to another modulates their distributive preferences, but it serves as an intuitive example in this instance.
+
 ### Generate Predictions
+
+This will be the workhorse of our modeling: the function which generates predictions from a trial set and set of parameters.
 
 ```{r}
 generatePredictions = function(params, df){
@@ -69,7 +75,7 @@ generatePredictions = function(params, df){
 
 ### Set-Up
 
-Let's get the parameters we want to simulate data for
+We now establish the parameters we want to simulate for.
 
 ```{r}
 freeParameters = data.frame(theta = rep(seq(0, 1, 0.01), each = 101),
@@ -78,7 +84,7 @@ freeParameters = data.frame(theta = rep(seq(0, 1, 0.01), each = 101),
 head(freeParameters)
 ```
 
-And the trialset we want to use
+And the trialset we want to use. In this example, we will assess the ability of the model to explain decisions in two conditions: where they are with a best-friend (Liking = 1) and someone they despise (Liking = 0). We will also put in a generic other person (0.5), making three conditions in total.
 
 ```{r}
 trialSet = data.frame(Endowment = rep(seq(10, 100, 10), times = 3),
@@ -116,8 +122,8 @@ obj_function = function(params, df, method = "OLS") {
     
     predicted_utility[k] = utility(theta = params[1], phi = params[2],
                                    modulator = modulator(L), 
-                                   inequality = inequality(E, R), 
-                                   payout = payout_maximization(E, R))
+                                   inequality = inequality(E, P), 
+                                   payout = payout_maximization(E, P))
     observed_utility[k] =  utility(theta = params[1], phi = params[2],
                                    modulator = modulator(L), 
                                    inequality = inequality(E, R), 
@@ -136,13 +142,10 @@ We'll call the per condition model the alternative model
 utilityAlt = function(theta, inequality, payout){
   return(theta*payout + (1-theta)*inequality)
 }
-generatePredictionsAlt = function(params, df){
+generatePredictionsAlt = function(par, df){
   prediction = vector('numeric', nrow(df))
-  conditions = levels(factor(df$Liking))
   for (k in 1:nrow(df)){
     E = df$Endowment[k]
-    L = df$Liking[k]
-    par = params[which(conditions == L)]
     
     Choices = seq(0, E)
     Utility = vector('numeric', length(Choices))
@@ -159,17 +162,14 @@ generatePredictionsAlt = function(params, df){
   }
   return(prediction)
 }
-obj_functionAlt = function(params, df, method = "OLS") {
+obj_functionAlt = function(par, df, method = "OLS") {
   predicted_utility = vector('numeric', length(df[,1]))
   observed_utility = vector('numeric', length(df[,1]))
-  Predictions = generatePredictions(params, df)
-  conditions = levels(factor(df$Liking))
+  Predictions = generatePredictionsAlt(par, df)
   for (k in 1:nrow(df)){
     E = df$Endowment[k]
-    L = df$Liking[k]
     R = df$Transferred[k]
     P = Predictions[k]
-    par = params[which(conditions == L)]
     
     predicted_utility[k] = utilityAlt(theta = par, 
                                       inequality = inequality(E, P), 
@@ -182,70 +182,122 @@ obj_functionAlt = function(params, df, method = "OLS") {
 }
 ```
 
-### Initialize for Parameter Recovery
+Now we need to optimize for the alternative model, per condition
 
 ```{r}
-library(pracma)
+optimizePerCondition = function(df){
+  conditions = levels(factor(df$Liking))
+  result = data.frame(par = vector('numeric', length(conditions)))
+  for (i in 1:length(conditions)){
+    condition = conditions[i]
+    data = df[which(df$Liking == condition), ]
+    result$par[i] = optim(fn = obj_functionAlt, 
+                          par = 0.5, lower = 0, upper = 1, 
+                          df = data, method = "Brent")$par
+  }
+  return(result)
+}
+```
 
+And then generate predictions per condition
+
+```{r}
+generateAltPerCondition = function(params, df){
+  Prediction = vector('numeric', nrow(df))
+  conditions = levels(factor(df$Liking))
+  for (i in 1:length(conditions)){
+    condition = conditions[i]
+    trials = which(df$Liking == condition)
+    Prediction[trials] = generatePredictionsAlt(params[i], df[trials, ])
+  }
+  return(Prediction)
+}
+```
+
+### Initialize for Parameter Recovery
+
+We're going to use an exhaustive search approach, which should be computational cheaper and more reliable
+
+```{r}
 initial_params = c(0.5, 0.5)
 lower_bounds = c(0, 0)
 upper_bounds = c(1,1)
-
-initial_paramsAlt = c(0.5, 0.5, 0.5)
-lower_boundsAlt = c(0, 0, 0)
-upper_boundsAlt = c(1, 1, 1)
 ```
 
 ## Proof Goals
 
 At this point we have deduced the choices that the model predicts per each coordinate in parameter space. The goal in what follows is to demonstrate that a less-parsimonious, incorrect model which is fit to conditions will outperform the true data generation process.
 
-Thus, we will compare the 2 parameter model which integrates across conditions to the 3 parameter model which segregates conditions in terms of their ability to explain the data generated by the 2 parameter model (predictions). However, since the predictions do not contain noise, we will noise up the data. The default standard deviation will be 1.
+Thus, we will compare the 2 parameter model which integrates across conditions to the model which segregates conditions in terms of their ability to explain the data generated by the 2 parameter model (predictions).
+
+## Data Functions
+
+However, since the predictions do not contain noise, we will noise up the data. The default standard deviation will be 0.05.
 
 ```{r}
-noise = function(predictions, sd = 1){
-  predictions = predictions + rnorm(predictions, mean = 0, sd = sd)
-  predictions = round(predictions)
-  predictions[which(predictions < 0)] = 0
-  return(predictions)
+library(ggplot2)
+noise = function(Predictions, X, sd = 0.05){
+  Ratio = Predictions/X
+  Ratio = Ratio + rnorm(Ratio, mean = 0, sd = sd)
+  Predictions = Ratio * X
+  Predictions = round(Predictions)
+  Predictions[which(Predictions < 0)] = 0
+  return(Predictions)
 }
+qplot(x = rep(trialSet$Endowment, 1000), 
+      y = noise(rep(t(predictions[1, 1:30]), 1000), 
+                rep(trialSet$Endowment, 1000))/rep(trialSet$Endowment, 1000),
+      geom = "jitter")
 ```
 
-We will also provide some intercondition noise, as participants tend to be slightly more consistent within conditions than across
+We will also warp the data as one check
 
 ```{r}
-intercondition = function(conditions, predictions, sd = 0.5){
-  for (condition in levels(factor(conditions))){
-    predictions[which(conditions == condition)] = 
-      predictions[which(conditions == condition)] + rnorm(1, mean = 0, sd = sd)
+warp = function(Predictions, X, WarpFactor){
+  Xmax = max(X)
+  standardDeviation = vector('numeric', length(X))
+  for (i in 1:length(Predictions)){
+    standardDeviation[i] = 0.05 + 0.05*(((X[i] - Xmax)/Xmax) * WarpFactor)
+    Predictions[i] = Predictions[i] + rnorm(1, mean = 0, sd = standardDeviation)
   }
-  predictions = round(predictions)
-  predictions[which(predictions < 0)] = 0
-  return(predictions)
+  Ratio = Predictions/X
+  Ratio = Ratio + rnorm(Ratio, mean = 0, sd = standardDeviation)
+  Predictions = Ratio * X
+  Predictions = round(Predictions)
+  Predictions[which(Predictions < 0)] = 0
+  return(Predictions)
 }
+qplot(x = rep(trialSet$Endowment, 1000), 
+      y = warp(rep(t(predictions[1, 1:30]), 1000), 
+               rep(trialSet$Endowment, 1000), 1)/rep(trialSet$Endowment, 1000),
+      geom = "jitter")
 ```
+
+## Parameter Distributions
 
 Also, a robust amount of research on these kinds of task indicates that preferences are not evenly distributed across the parameter space.
 
 ```{r}
-distribution_theta = rnorm(n = 1000000, mean = 0.3, sd = 0.3)
+distribution_theta = rnorm(n = 1000000, mean = 0.7, sd = 0.3)
 distribution_theta = distribution_theta[-which(distribution_theta < 0 | distribution_theta > 1)]
 distribution_theta = round(distribution_theta, 2)
-library(ggplot2)
 ggplot() + geom_histogram(aes(x = distribution_theta), bins = 15)
 ```
 
-Around 10 percent of people are selfish, corresponding to a theta \> 0.7 in this equation
+Around the typical return amount is 35%, corresponding to a theta \~ 0.7 in this equation. We want the same for phi as well, thinking that the majority of people will show a strong modulatory effect.
 
 ```{r}
-sum(distribution_theta > 0.7)/length(distribution_theta)
+distribution_phi = rnorm(n = 1000000, mean = 0.7, sd = 0.3)
+distribution_phi = distribution_phi[-which(distribution_phi < 0 | distribution_phi > 1)]
+distribution_phi = round(distribution_phi, 2)
+ggplot() + geom_histogram(aes(x = distribution_phi), bins = 15)
 ```
 
 Sample the parameter space for the maximum number of observations: 1000
 
 ```{r}
 n1000 = data.frame(theta = sample(distribution_theta, 1000),
-                   phi = sample(seq(0, 1, 0.01), 1000, replace = T))
+                   phi = sample(distribution_phi, 1000))
 ggplot(data = n1000) + geom_point(aes(x = theta, y = phi))
 ```
 

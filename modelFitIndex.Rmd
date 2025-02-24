@@ -37,8 +37,7 @@ plottingInfoAll = data.frame(Outcome = rep(c("Incorrect & N.S.",
                              MPI = rep(c("AIC", "BIC"), each = 4))
 
 index = "AIC"
-standardDeviation = 1
-sampleSize = 100
+sampleSize = 60
 nTrials = 60
 test = vector('logical', 100000)
 better = vector('logical', 100000)
@@ -47,8 +46,18 @@ for (i in 1:length(test)){
   better[i] = sum(subsample$AIC) < sum(subsample$AIC_alt)
   test[i] = t.test(subsample$AIC, subsample$AIC_alt, paired = T)$p.value < 0.05
 }
-contingency = table(better, test)
-plottingInfoAll$Count[which(plottingInfoAll$MPI == index)] = as.vector(contingency)
+plottingInfoAll$Count[which(plottingInfoAll$MPI == index & 
+                              plottingInfoAll$Outcome == "Incorrect & N.S.")] = 
+    sum(better==F & test==F)
+plottingInfoAll$Count[which(plottingInfoAll$MPI == index & 
+                            plottingInfoAll$Outcome == "Correct & N.S.")] = 
+  sum(better==T & test==F)
+plottingInfoAll$Count[which(plottingInfoAll$MPI == index & 
+                            plottingInfoAll$Outcome == "Incorrect & p < 0.05")] = 
+  sum(better==F & test==T)
+plottingInfoAll$Count[which(plottingInfoAll$MPI == index & 
+                            plottingInfoAll$Outcome == "Correct & p < 0.05")] = 
+  sum(better==T & test==T)
 
 index = "BIC"
 test = vector('logical', 100000)
@@ -58,8 +67,18 @@ for (i in 1:length(test)){
   better[i] = sum(subsample$BIC) < sum(subsample$BIC_alt)
   test[i] = t.test(subsample$BIC, subsample$BIC_alt, paired = T)$p.value < 0.05
 }
-contingency = table(better, test)
-plottingInfoAll$Count[which(plottingInfoAll$MPI == index)] = as.vector(contingency)
+plottingInfoAll$Count[which(plottingInfoAll$MPI == index & 
+                              plottingInfoAll$Outcome == "Incorrect & N.S.")] = 
+    sum(better==F & test==F)
+plottingInfoAll$Count[which(plottingInfoAll$MPI == index & 
+                            plottingInfoAll$Outcome == "Correct & N.S.")] = 
+  sum(better==T & test==F)
+plottingInfoAll$Count[which(plottingInfoAll$MPI == index & 
+                            plottingInfoAll$Outcome == "Incorrect & p < 0.05")] = 
+  sum(better==F & test==T)
+plottingInfoAll$Count[which(plottingInfoAll$MPI == index & 
+                            plottingInfoAll$Outcome == "Correct & p < 0.05")] = 
+  sum(better==T & test==T)
 
 plottingInfoAll$MPI = as.factor(plottingInfoAll$MPI)
 plottingInfoAll$Outcome = factor(plottingInfoAll$Outcome,
@@ -84,8 +103,11 @@ those = which(plottingInfoAll$Outcome == "Incorrect & N.S.")
 plottingInfoAll$Position[those] = plottingInfoAll$Proportion[these] +
   plottingInfoAll$Proportion[those]/2
 
-plottingInfoAll$Position[which(plottingInfoAll$Proportion == 0)] = 2
-ggplot(data = plottingInfoAll, aes(x = Proportion, y = MPI, group = Outcome,
+if (sum(plottingInfoAll$Proportion == 0) > 0){
+  final = plottingInfoAll[-which(plottingInfoAll$Proportion == 0),]
+} else {final = plottingInfoAll}
+
+ggplot(data = final, aes(x = Proportion, y = MPI, group = Outcome,
                                    fill = Outcome)) + 
   geom_col() + theme_minimal() + 
   scale_fill_manual(values = c("green", "forestgreen", "firebrick4", "red")) +

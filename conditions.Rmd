@@ -1,35 +1,21 @@
-# Systematic Error
+# Number of Conditions
 
 Load file
 
 ```{r}
-load(file = "C:/Users/DELL/Documents/socog/index.RData")
+load(file = "C:/Users/DELL/Documents/integration-simulations/index.RData")
 library(pracma)
 library(ggplot2)
 ```
 
-## Generate Predictions
+See new conditions
 
 ```{r}
-trialSet = data.frame(Investment = rep(seq(1, 10), times = 12),
-                      Multiplier = rep(c(2, 4, 6, 
-                                         4, 4, 4, 
-                                         4, 6, 8,
-                                         6, 6, 6), each = 10),
-                      Endowment = rep(10, 120),
-                      Believed_Multiplier = rep(c(4, 4, 4,
-                                                  2, 4, 6,
-                                                  6, 6, 6,
-                                                  4, 6, 8), each = 10))
-predictions = data.frame()
-for (i in 1:nrow(freeParameters)){
-  pars = as.numeric(freeParameters[i, ])
-  predictions[i, 1:nrow(trialSet)] = generatePredictions(pars, trialSet)
-}
-head(predictions)
+example = c(seq(0, 0.49, 1/6), seq(0.5, 1, 1/16))
+qplot(x = example, y = modulator(example))
 ```
 
-## Assess Violations
+Now estimate parameters
 
 ```{r}
 plottingInfoAll = data.frame(Outcome = rep(c("Incorrect & N.S.", 
@@ -37,50 +23,65 @@ plottingInfoAll = data.frame(Outcome = rep(c("Incorrect & N.S.",
                                              "Incorrect & p < 0.05",
                                              "Correct & p < 0.05"), times = 4),
                              Count = 0,
-                             Conditions = rep(c(3, 6, 9, 12), each = 4))
+                             Conditions = rep(c(2, 3, 6, 12), each = 4))
 
-sampleSize = 100
+sampleSize = 60
 nTrials = 120
-standardDeviation = 1
-Conditions = c(30, 60, 90, 120)
-ConditionName = c("HMTG - 2", "HMTG - 4", "HMTG - 6", 
-                  "FBMTG - 2", "FBMTG - 4", "FBMTG - 6",
-                  "HMTG - 4", "HMTG - 6", "HMTG - 8",
-                  "FBMTG - 4", "FBMTG - 6", "FBMTG - 8")
+Conditions = c(2, 3, 6, 12)
 
 for (Condition in Conditions){
-  df = n1000
-  df = as.data.frame(df)
+  if (Condition == 2){
+    trialSet = data.frame(Endowment = rep(seq(10, 100, 10), times = 12),
+                          Liking = rep(c(0, 1), each = 60))
+  } else if (Condition == 3){
+    trialSet = data.frame(Endowment = rep(seq(10, 100, 10), times = 12),
+                          Liking = rep(c(0, 0.5, 1), each = 40))
+  } else if (Condition == 6){
+    trialSet = data.frame(Endowment = rep(seq(10, 100, 10), times = 12),
+                          Liking = rep(c(seq(0, 0.5, 1/3), 0.5, seq(0.75, 1, 1/8)), each = 20))
+  } else {
+    trialSet = data.frame(Endowment = rep(seq(10, 100, 10), times = 12),
+                          Liking = rep(c(seq(0, 0.49, 1/6), seq(0.5, 1, 1/16)), each = 10))
+  }
+  df = n1000[sample(200), ]
   df$NLL = 0
   df$NLL_alt = 0
   for (i in 1:nrow(df)){
     row = which(round(freeParameters$theta, 2) == round(df$theta[i], 2) & 
                   round(freeParameters$phi, 2) == round(df$phi[i], 2))
-    preds = as.numeric(predictions[row, ])
-    preds = preds[1:Condition]
-    data = trialSet[1:Condition, ]
-    data$Returned = preds
-    data = rbind(data, data, data, data)
-    data = data[1:nTrials, ]
-    data$Returned = noise(data$Returned, standardDeviation)
+    data = trialSet
+    preds = generatePredictions(as.numeric(freeParameters[row,]), data)
+    data$Transferred = noise(preds, data$Endowment)
     
-    result = fmincon(obj_function,x0 = initial_params,
-                     lb = lower_bounds, ub = upper_bounds,
-                     df = data)
-    resultAlt = fmincon(obj_functionAlt, x0 = initial_paramsAlt,
-                        lb = lower_boundsAlt, ub = upper_boundsAlt,
-                        df = data)
+    result = tryCatch({fmincon(obj_function,x0 = initial_params,
+                       lb = lower_bounds, ub = upper_bounds,
+                       df = data)}, error = function(e){data.frame(par = NA)})
+    resultAlt = tryCatch({optimizePerCondition(df = data)}, 
+                         error = function(e){data.frame(par = NA)})
+    if (is.na(resultAlt$par[1]) | is.na(result$par[1])){
+      df$NLL[i] = NA; df$NLL_alt[i] = NA; next
+    }
     data$Preds = generatePredictions(result$par, data)
-    data$PredsAlt = generatePredictionsAlt(resultAlt$par, data)
+    data$PredsAlt = generateAltPerCondition(resultAlt$par, data)
     
-    df$NLL[i] = -sum(dnorm(data$Returned, mean = data$Preds, 
-                           sd = sd(data$Returned - data$Preds), log = TRUE))
-    df$NLL_alt[i] = -sum(dnorm(data$Returned, mean = data$PredsAlt, 
-                               sd = sd(data$Returned - data$PredsAlt), log = TRUE))
+    if (sum(data$Preds == data$Transferred)==nrow(data)){
+      data$Preds[sample(nrow(data), 1)] =+ 1
+    }
+    if (sum(data$PredsAlt == data$Transferred)==nrow(data)){
+      data$PredsAlt[sample(nrow(data), 1)] =+ 1
+    }
+    
+    df$NLL[i] = -sum(dnorm(data$Transferred/data$Endowment, 
+                           mean = data$Preds/data$Endowment, 
+                           sd = sd((data$Transferred - data$Preds)/data$Endowment),
+                           log = T))
+    df$NLL_alt[i] = -sum(dnorm(data$Transferred/data$Endowment, 
+                               mean = data$PredsAlt/data$Endowment, 
+                           sd = sd((data$Transferred - data$PredsAlt)/data$Endowment), log = T))
   }
   
   df$BIC = 2 * df$NLL + 2 * log(nrow(data))
-  df$BIC_alt = 2 * df$NLL_alt + 3 * log(nrow(data))
+  df$BIC_alt = 2 * df$NLL_alt + Condition * log(nrow(data))
   test = vector('logical', 100000)
   better = vector('logical', 100000)
   for (i in 1:length(test)){
@@ -88,50 +89,64 @@ for (Condition in Conditions){
     better[i] = sum(subsample$BIC) < sum(subsample$BIC_alt)
     test[i] = t.test(subsample$BIC, subsample$BIC_alt, paired = T)$p.value < 0.05
   }
-  contingency = table(better, test)
-  plottingInfoAll$Count[which(plottingInfoAll$Conditions == Condition)] = 
-    as.vector(contingency)
+  plottingInfoAll$Count[which(plottingInfoAll$Conditions == Condition & 
+                              plottingInfoAll$Outcome == "Incorrect & N.S.")] = 
+    sum(better==F & test==F)
+  plottingInfoAll$Count[which(plottingInfoAll$Conditions == Condition & 
+                              plottingInfoAll$Outcome == "Correct & N.S.")] = 
+    sum(better==T & test==F)
+  plottingInfoAll$Count[which(plottingInfoAll$Conditions == Condition & 
+                              plottingInfoAll$Outcome == "Incorrect & p < 0.05")] = 
+    sum(better==F & test==T)
+  plottingInfoAll$Count[which(plottingInfoAll$Conditions == Condition & 
+                              plottingInfoAll$Outcome == "Correct & p < 0.05")] = 
+    sum(better==T & test==T)
 }
 ```
 
-## Plot
+And plot
 
 ```{r}
-plottingInfoAll$Condition = plottingInfoAll$Conditions/10
 plottingInfoAll$Condition = factor(plottingInfoAll$Condition, 
-                                levels = c(12, 9, 6, 3))
+                                levels = c(12, 6, 3, 2))
 plottingInfoAll$Outcome = factor(plottingInfoAll$Outcome,
                                  levels = c("Correct & p < 0.05",
                                             "Correct & N.S.", 
                                             "Incorrect & N.S.",
                                             "Incorrect & p < 0.05"))
-plottingInfoAll$Proportion = plottingInfoAll$Count/100000
-plottingInfoAll$Position = plottingInfoAll$Proportion/2
+plottingInfoAll$Proportion = (plottingInfoAll$Count/length(test))
 
 these = which(plottingInfoAll$Outcome == "Correct & p < 0.05")
-plottingInfoAll$Position[these] = 1 - plottingInfoAll$Proportion[these]/2
+plottingInfoAll$Position[these] = 1.175
 
 those = which(plottingInfoAll$Outcome == "Correct & N.S.")
 plottingInfoAll$Position[those] = 1 - plottingInfoAll$Proportion[these] -
   plottingInfoAll$Proportion[those]/2
 
-these = which(plottingInfoAll$Outcome == "Incorrect & p < 0.05")
-those = which(plottingInfoAll$Outcome == "Incorrect & N.S.")
-plottingInfoAll$Position[those] = max(plottingInfoAll$Proportion[these] +
-  plottingInfoAll$Proportion[those]/2, 0.2)
+plottingInfoAll$Position[those[which(plottingInfoAll$Proportion[these] == 0)]] = 1.175
 
-ggplot(data = plottingInfoAll, aes(x = Proportion, y = Condition, group = Outcome,
+these = which(plottingInfoAll$Outcome == "Incorrect & p < 0.05")
+plottingInfoAll$Position[these] = plottingInfoAll$Proportion[these]/2
+those = which(plottingInfoAll$Outcome == "Incorrect & N.S.")
+plottingInfoAll$Position[those] = plottingInfoAll$Proportion[these] +
+  plottingInfoAll$Proportion[those]/2
+
+if (sum(plottingInfoAll$Proportion == 0) > 0){
+  final = plottingInfoAll[-which(plottingInfoAll$Proportion == 0),]
+} else {final = plottingInfoAll}
+
+ggplot(data = final, aes(x = Proportion, y = Condition, group = Outcome,
                                    fill = Outcome)) + 
   geom_col() + theme_minimal() + 
   scale_fill_manual(values = c("green", "forestgreen", "firebrick4", "red")) +
-  labs(x = "Proportion", y = "Bias Factor", 
+  labs(x = "Proportion", y = "Number of Conditions", 
        fill = "Result",
        label = NULL) + 
-  geom_label(aes(label = Proportion, x = Position)) + lims(x = c(-0.05, 1.05))
+  geom_label(aes(label = Proportion, x = Position)) + lims(x = c(-0.025, 1.25))
 ```
 
 Now save workspace for later reference
 
 ```{r}
-save.image(file = "C:/Users/DELL/Documents/socog/conditions.RData")
+save.image(file = "C:/Users/DELL/Documents/integration-simulations/conditions.RData")
 ```

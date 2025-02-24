@@ -16,41 +16,50 @@ plottingInfoAll = data.frame(Outcome = rep(c("Incorrect & N.S.",
                                              "Incorrect & p < 0.05",
                                              "Correct & p < 0.05"), times = 4),
                              Count = 0,
-                             SD = rep(c(0, 1, 2, 5), each = 4))
+                             SD = rep(c(0.025, 0.05, 0.1, 0.15), each = 4))
 
-sampleSize = 100
+sampleSize = 60
 nTrials = 60
-standardDeviations = c(0, 1, 2, 5)
+standardDeviations = c(0.025, 0.05, 0.1, 0.15)
 
 for (standardDeviation in standardDeviations){
-  df = n1000
+  df = n1000[sample(200), ]
   for (i in 1:nrow(df)){
     row = which(round(freeParameters$theta, 2) == round(df$theta[i], 2) & 
                   round(freeParameters$phi, 2) == round(df$phi[i], 2))
     preds = as.numeric(predictions[row, ])
     preds = rep(preds, times = nTrials/length(preds))
-    preds = noise(preds, standardDeviation)
     data = rbind(trialSet, trialSet)
-    data$Transferred = preds
-    
+    data$Transferred = noise(preds, data$Endowment, sd = standardDeviation)
     
     result = tryCatch({fmincon(obj_function,x0 = initial_params,
                        lb = lower_bounds, ub = upper_bounds,
                        df = data)}, error = function(e){data.frame(par = NA)})
-    resultAlt = tryCatch({fmincon(obj_functionAlt, x0 = initial_paramsAlt,
-                          lb = lower_boundsAlt, ub = upper_boundsAlt,
-                          df = data)}, error = function(e){data.frame(par = NA)})
+    resultAlt = tryCatch({optimizePerCondition(df = data)}, 
+                         error = function(e){data.frame(par = NA)})
     if (is.na(resultAlt$par[1]) | is.na(result$par[1])){
       df$NLL[i] = NA; df$NLL_alt[i] = NA; next
     }
     
     data$Preds = generatePredictions(result$par, data)
-    data$PredsAlt = generatePredictionsAlt(resultAlt$par, data)
+    data$PredsAlt = generateAltPerCondition(resultAlt$par, data)
     
-    df$NLL[i] = -sum(dnorm(data$Transferred, mean = data$Preds, 
-                           sd = sd(data$Transferred - data$Preds), log = T))
-    df$NLL_alt[i] = -sum(dnorm(data$Transferred, mean = data$PredsAlt, 
-                               sd = sd(data$Transferred - data$PredsAlt), log = T))
+    if (sum(data$Preds == data$Transferred)==nrow(data)){
+      data$Preds[sample(nrow(data), 1)] =+ 1
+    }
+    if (sum(data$PredsAlt == data$Transferred)==nrow(data)){
+      data$PredsAlt[sample(nrow(data), 1)] =+ 1
+    }
+    
+    df$NLL[i] = -sum(dnorm(data$Transferred/data$Endowment, 
+                           mean = data$Preds/data$Endowment, 
+                           sd = sd((data$Transferred - data$Preds)/data$Endowment),
+                           log = T))
+    df$NLL_alt[i] = -sum(dnorm(data$Transferred/data$Endowment, 
+                               mean = data$PredsAlt/data$Endowment, 
+                           sd = sd((data$Transferred - data$PredsAlt)/data$Endowment), log = T))
+    df$thetaR[i] = result$par[1]; df$phiR[i] = result$par[2]
+    df$theta0[i] = resultAlt$par[1]; df$theta5[i] = resultAlt$par[2]; df$theta1[i] = resultAlt$par[3];
   }
   df$BIC = 2 * df$NLL + 2 * log(nrow(data))
   df$BIC_alt = 2 * df$NLL_alt + 3 * log(nrow(data))
@@ -82,7 +91,8 @@ for (standardDeviation in standardDeviations){
 And plot
 
 ```{r}
-plottingInfoAll$SD = factor(plottingInfoAll$SD, levels = c(5, 2, 1, 0))
+plottingInfoAll$SD = factor(plottingInfoAll$SD, 
+                            levels = c(0.15, 0.1, 0.05, 0.025))
 plottingInfoAll$Outcome = factor(plottingInfoAll$Outcome,
                                  levels = c("Correct & p < 0.05",
                                             "Correct & N.S.", 
@@ -105,16 +115,18 @@ those = which(plottingInfoAll$Outcome == "Incorrect & N.S.")
 plottingInfoAll$Position[those] = plottingInfoAll$Proportion[these] +
   plottingInfoAll$Proportion[those]/2
 
-plottingInfoAll$Position[which(plottingInfoAll$Proportion == 0)] = 2
+if (sum(plottingInfoAll$Proportion == 0) > 0){
+  final = plottingInfoAll[-which(plottingInfoAll$Proportion == 0),]
+} else {final = plottingInfoAll}
 
-ggplot(data = plottingInfoAll, aes(x = Proportion, y = SD, group = Outcome,
+ggplot(data = final, aes(x = Proportion, y = SD, group = Outcome,
                                    fill = Outcome)) + 
   geom_col() + theme_minimal() + 
   scale_fill_manual(values = c("green", "forestgreen", "firebrick4", "red")) +
   labs(x = "Proportion", y = "Standard Deviation", 
        fill = "Result",
        label = NULL) + 
-  geom_label(aes(label = Proportion, x = Position)) + lims(x = c(-0.05, 1.05))
+  geom_label(aes(label = Proportion, x = Position)) + lims(x = c(-0.025, 1.25))
 ```
 
 Now save workspace for later reference
